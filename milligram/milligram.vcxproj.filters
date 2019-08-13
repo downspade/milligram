@@ -27,12 +27,54 @@
     <ClInclude Include="milligram.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="spiplugin.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="acfc.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="MainForm.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="InputForm.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="FormSizeForm.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Header.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="ProgressForm.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="stdafx.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="milligram.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="spiplugin.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="acfc.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="MainForm.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="InputForm.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="JpegSettingForm.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="ProgressForm.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="FormSizeForm.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
@@ -42,11 +84,52 @@
     </ResourceCompile>
   </ItemGroup>
   <ItemGroup>
-    <Image Include="small.ico">
+    <Image Include="trayicon1.ico">
       <Filter>Resource Files</Filter>
     </Image>
-    <Image Include="milligram.ico">
+    <Image Include="trayicon2.ico">
       <Filter>Resource Files</Filter>
     </Image>
+    <Image Include="trayicon3.ico">
+      <Filter>Resource Files</Filter>
+    </Image>
+    <Image Include="trayicon4.ico">
+      <Filter>Resource Files</Filter>
+    </Image>
+    <Image Include="trayicon5.ico">
+      <Filter>Resource Files</Filter>
+    </Image>
+    <Image Include="trayicon0.ico">
+      <Filter>Resource Files</Filter>
+    </Image>
+    <Image Include="icon.ico">
+      <Filter>Resource Files</Filter>
+    </Image>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="Hand_0.cur">
+      <Filter>Resource Files</Filter>
+    </None>
+    <None Include="Hand_1.cur">
+      <Filter>Resource Files</Filter>
+    </None>
+    <None Include="Hand_2.cur">
+      <Filter>Resource Files</Filter>
+    </None>
+    <None Include="Grab_1.cur">
+      <Filter>Resource Files</Filter>
+    </None>
+    <None Include="Grab_2.cur">
+      <Filter>Resource Files</Filter>
+    </None>
+    <None Include="Grab_0.cur">
+      <Filter>Resource Files</Filter>
+    </None>
+    <None Include="None.cur">
+      <Filter>Resource Files</Filter>
+    </None>
+  </ItemGroup>
+  <ItemGroup>
+    <Manifest Include="app.manifest" />
   </ItemGroup>
 </Project>

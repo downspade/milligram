@@ -1,0 +1,395 @@
+
+                    Susie Plug-inのWrapperライブラリ
+
+                                                    Document: kana
+                                                    Date: 2000/9/3
+
+1. 目的
+
+  ・Susie Plug-inを利用するプログラムの作成支援
+    利用側の呼出し手順(パラメータなど)のサンプル
+  ・Susie Plug-inの誤動作チェック
+  ・従来のPlug-in Wrapper Library[Rev 0.05]の更新
+
+
+2. 動作環境
+   ソース作成、動作確認は以下の環境にて行ないました。
+     Windows NT 4.0 Workstaion ServicePack 3 + いくつかのPostFix
+     VC++ 6.0 ServicePack 3
+   特にOSに依存するようなコードは書いていませんのでWin95/98系でも動作
+すると思います。またVC++5.0でのコンパイル・動作確認は行なっていません。
+
+
+3. ファイル
+  bin\
+   SPIANY.EXE			サンプル1をコンパイルしたもの
+   ToBitmap.exe			サンプル2をコンパイルしたもの
+  src\
+   SPI_WRAPPER.TXT		このファイル自身です。
+   SPIIF.CPP / SPIIF.H		Wrapperライブラリ自身のソースです。
+				SPI_API.H/SPI_MISC.Hが必須です。
+   REGS.C			レジストリ周りのアクセスルーチンです。
+
+ 
+  +-SPIANY			サンプルその1[Win32 Console Application]
+	Wrapperライブラリを利用サンプル1です。
+	特定のPlug-inを指定して入力を与えた結果がどうなるかを出力します。
+
+  +-ToBitmap			サンプルその2[Win32 GUI Application]
+	SusieのカタログやエクスプローラからD&Dでファイルを受け取り、
+	指定したディレクトリへBitmapファイルを出力します。
+	バグが残ったままになっているので実用的には別途配布されている
+	ToBitmap0.12以降を使ってください。
+
+  +-CnvBmp			サンプルその3[Win32 Console Application]
+	SusieのSendToに入れて使うことで指定のファイルをBitmapへ変換します。
+	書庫内ファイルへのアクセスのサンプルです。
+   
+  細かいソースファイルの説明は省略しています。各サンプルはいわゆるMacBinary
+に対する処理は特に行なっていませんので他のアプリケーションでは読めるがこ
+れらのサンプルプログラムでは読めない場合もあります。
+
+
+4. 再コンパイル
+
+  VisualC++6.0用のプロジェクトファイルがあるのでロードしてコンパイルし
+てください。Makefileは今回は付属していません。Visual C++5.0での再コンパ
+イルを行なう際は、STLの不具合が(たぶん)多いのでSTLの修正を行なっておくか、
+std::vecotrを使わない形に修正してください。CPtrArrayで簡単に修正できる
+と思いますが非MFCプロジェクトでもコンパイルできるかどうかはわかりません。
+
+
+5. クラス説明
+
+  SpiFileクラス:
+   Susie Plug-inへのインタフェースを定義します。
+   実際のSPIファイルを表現するのはSpiDllFileクラスです。
+   各メンバー関数はSPIにあるものと同じです。それ以外の関数としては。
+    (1) Plug-inの種類を返却します。
+	SpiFileType GetSpiFileType(void)
+	  SpiFile_ImportFilter: 00IN Plug-inである
+	  SpiFile_ExportFilter: 出力用のPlug-inである(定義されていません)
+	  SpiFile_Archive:  00AM Plug-inである
+        SpiFileTypeはSpiFileクラスローカルの型なので気をつけてください。
+
+  SpiDllFileクラス:
+    Plug-in本来のI/Fと異なるものについてのみ記述します。
+    (1) Susieでのaboutで使われる文字列を返却。
+        char *GetAboutName()
+        オブジェクトローカルのポインタを返却しますので領域の解放は不要。
+        返却する内容はGetPluginInfoのinfono==1で返却される文字列と同等。
+
+#if	0
+    (2) Plug-inの種別を返却
+        SpiFileType GetSpiFileType()
+        返却する内容はGetPluginInfoのinfono==0で返却される内容と同等。
+#endif
+
+    (3) Plug-inのファイル名を返却。
+        char *GetFileName()
+        オブジェクトローカルのポインタを返却しますので領域の解放は不要。
+
+    (4) 指定のファイルがアーカイブファイル内に存在するかどうかを確認する
+        int CheckExistingFile(SpiInputStream *in, LPCSTR query_name, LPSTR *next_target);
+
+        in: 対象となるアーカイブファイルを指定する
+        query_name: 存在を確認したいファイル名
+        next_target: ファイル名中の他の要素(書庫内の書庫ファイルのような場合)
+
+        戻り値:
+          > 0  query_nameは存在し、書庫内書庫ファイルでもない。
+          == 0 query_nameは存在するが、in内にある書庫内書庫ファイルである。
+               next_targetが次にチェックすべき書庫内のパスを示す。
+               inは書庫内書庫ファイルを実際に取得し、そのイメージを保持するように変更される。
+          < 0  query_nameは存在しないパスである。またはinで指定されたストリームは不正である。
+
+        備考: AM Plug-inの時にのみ意味がある。
+              ∵内部でGetArchiveInfoを呼び出すため。
+
+
+  同名の関数でI/Fの追加が行なわれているもの
+  ・共通
+    (5) Plug-in設定ダイアログを表示
+        int ConfigurationDlg(HWND parent, int fnc)
+
+        fncとして-1を引数に指定できます。この場合Plug-inにConfigurationDlgが実装
+        されているかどうかを確認(未実装の場合-1を返却)できます。
+
+  ・00IN Plug-in 
+    (6) 展開可能なファイル形式かどうか調べる
+        int IsSupported(SpiInputStream *in)
+
+        inは検査対象となるファイルまたはメモリイメージです。
+        ただしSusieの利用方法との互換性のためにファイルが指定されても一
+        旦ファイル先頭の2kbyteをメモリに読み込んでPlug-inに問い合わせま
+        す。
+        入力としてSpiInputStreamを受け取る関数では Mac Binary のためのオ
+        フセット指定はinに対して行ないます。
+
+    (7) 画像を展開する
+        int GetPicture(SpiInputStream *in, HANDLE *phBitmapInfo, HANDLE *phMemory,
+                       FARPROC lpPrgressCallback, long lData)
+        int GetPreview(SpiInputStream *in, HANDLE *phBitmapInfo, HANDLE *phMemory,
+                       FARPROC lpPrgressCallback, long lData)
+
+        inは画像を展開する入力ソースを指定します。inは自分でデータを設定
+        したものや、SpiFileManage::OpenFileが返却したものが指定可能です。
+        GetPreviewはGetPictureと同等ですが、可能であればプレビュー用の小
+        さい画像が返却されます。Plug-inがサポートしていない場合には
+        内部的にGetPictureを呼び出し、その代わりとします。
+
+  ・00AM Plug-in 
+     (8) アーカイブ内のすべてのファイルの情報を取得する
+        int GetArchiveInfo(SpiInputStream *in, SpiArcFileInfo **lpInf)
+        int GetArchiveInfo(SpiInputStream *in, HLOCAL *lphInf)
+
+        in: アーカイブファイルを指定します。
+        lpInf/lphInf: 結果を格納する先。SpiArcFileInfoの配列へのポインタ(lpInf)か
+        それを格納しているローカルメモリハンドル(lphInf)に返却します。
+        
+        一部のPlug-inの不具合のために関数の戻り値はPlug-inの返却した値で
+        はなく、lphInf[0].method[0]の値を調べることで決定されます。
+
+
+     (9) アーカイブ内の指定したファイルの情報を取得する
+        int GetFileInfo(SpiInputStream *in, LPCSTR filename, unsigned int flag, SpiArcFileInfo *lpInf)
+
+        in: アーカイブファイルを指定します。
+        filename: アーカイブ中の取得したいファイル名
+        flag: アーカイブ内のファイル名の取り扱いを大文字・小文字を区別するかどうか
+              区別する(=0)/区別しない(=1)
+        lpInf: 指定したアーカイブファイルの情報
+
+
+     (10) アーカイブ内の指定したファイルを取得する
+         int GetFile(SpiInputStream *in, SpiArcFileInfo *info, LPCSTR output_file_name,
+                       FARPROC lpPrgressCallback, long lData)
+         int GetFile(SpiInputStream *in, SpiArcFileInfo *info, HLOCAL *lphMem,
+                       FARPROC lpPrgressCallback, long lData)
+
+         in: アーカイブファイルを指定
+         info: GetArchiveInfoまたはGetFileInfoで取得したものを渡す。positionと
+         filesizeメンバが参照されます。
+         output_file_name/lphMem: 取得したファイルを格納する先を指定する。
+
+
+
+  SpiFileManageクラス:
+   Plug-in全体を表現します。
+    (1) Plug-inをロードするディレクトリを指定する
+	int SetPluginDirectory(LPCSTR dir)
+	  dir: Plug-inが存在するディレクトリ
+	       NULLであればSusieのレジストリ設定を参考にします。
+	  LoadPluginをコールする前に呼び出してください。
+
+    (2) Pluginファイルをロードする
+	void LoadPluginFile();
+	  (1)で指定したディレクトリからPlug-inをロードします。
+	  LoadPluginFileは各Plug-inをロードする前にそれぞれのPlug-inに対してQueryPluginLoad
+	メンバを呼び出し使うかどうかを決定します。
+
+	現在の実装ではPlug-inをロードするディレクトリは複数指定できませんがAddPluginで特定の
+	Plug-inを追加することはできます。この場合はnewで確保したSpiDllFileのオブジェクトを指
+	定しなければいけません。またUnLoadPluginFileを実行する際にこのオブジェクトは自動的に
+	破棄されます。
+
+    (3) Pluginファイルをアンロードする
+	void UnloadPluginFile();
+	  (2)でロードしたPlug-inを開放します。
+
+    (4) 指定されたディレクトリに存在するPlug-inを利用するかどうかを決定する
+	int QueryPluginLoad(LPCSTR dir, LPCSTR fileName)
+
+	"dir\fileName"で指定されたPlug-in(*.spi)ファイルをロードするかどうかを決定します。
+	デフォルトの実装ではコールバック関数を保持するメンバ
+	(m_query_plugin_load_callback_func)で指定したコールバック関数を呼び出してその結果
+	によって決定されます。このコールバック関数はSusieのレジストリ設定を参照してロード
+	するかどうかを決定します。
+	動作を変更するには派生クラスでQueryPluginLoadを定義しなおすか、
+	m_query_plugin_load_callback_funcメンバ変数をLoadPluginFile()を実行する前にアプリ
+	ケーションで変更します。
+
+	特定のPlug-inをロードしないやPlug-inのOn/Offの設定を変更する場合に利用します。
+
+    (5) あるファイルを展開できるPluginファイルを探す
+	SpiFile *SearchPlugin(LPCSTR fileName);
+	  指定したファイルを展開できるPlug-inを表現するSpiFileクラスを
+	  返却します。
+
+    (6) ロードしているPlug-inを列挙します
+	SpiFindData *CreateFindData();
+	SpiFile *GetNextPlugin(void);
+	void CloseFindData(SpiFindData *);
+	  (2)でロードしたPlug-inを表現するSpiFileクラスを列挙します。
+	  NULLを返却した場合にはそれ以上のPlug-inはありません。
+	  通常は以下のようなシーケンスとなります。
+
+	SpiFindData *find= CreateFindData();
+	for (SpiFile *spi= GetNextPlugin(); spi != NULL; spi= GetNextPlugin()) {
+		spi->IsSupported(...);
+		......
+	}
+	CloseFindData(find);
+
+    (7) 与えられた入力から指定されたファイルをオープンする
+        int OpenFile(SpiInputStream *in, LPCSTR filename);
+
+        in: 入力ファイルまたはメモリイメージ。現状はファイルのみ対応
+        filename: 入力ファイル中のオープンしたいファイル。inとfilenameが同一の場合もありうる
+        
+        戻り値:
+          =>0: 正常に終了。inはオープンしたことによって取得したファイル名または
+               ファイルイメージに更新される。
+          < 0: filenameが存在しないなどの理由で失敗。
+               書庫内ファイルであればそれを扱えるPlug-inがないことも考えられる。
+          
+    (8) オープンしたイメージからBitmapイメージを取得する
+        SpiFile *GetBitmapImage(SpiInputStream *in, SpiOutputStream *out, int mode,
+                                FARPROC lpPrgressCallback, long lData)
+
+        in: OpenFileなどで取得した入力
+        out: inから取得したBitmapイメージ
+        mode: != 0 プレビューイメージを取得する / == 0 通常イメージを取得する
+              GetPreviewをサポートしていないIN Plug-inの場合にはGetPictureを利用する
+        lpPrgressCallback/lData: コールバック関数とそのパラメータ。コールバック関数に
+              NULLを指定すると内部で持っている何もしないコールバック関数を呼び出すよ
+              うに修正されます。これは一部のPlug-inがNULLを渡されることを意識していな
+              いためです。
+        
+
+  またいくつかのUndocumentedなコールバック関数が定義されています。
+
+
+8. サンプルプログラム
+8.1. SPIANY
+  Plug-inファイルと画像ファイルを指定してPlug-inの動作が確認できますの
+で、Plug-inが誤動作した場合に実際にどのPlug-inが誤動作したのかを確認で
+きます。例えば、全てのPlug-inと該当する画像ファイルをコピーしたディレ
+クトリで、コマンドプロンプトを起動し以下のようにタイプします。
+
+   $> for %%a in (*.SPI) do spiany %%a 画像ファイル名
+            NTでの場合です。たぶん95でもforは同じだと思いますが・・・。
+
+  きちんと展開できる場合には画像情報が、そのほかの場合には未サポートな
+りのメッセージが出力されます。こうして間違って反応してしまったPlug-in
+などを突き止める事が出来ます(^^;。
+
+ ちなみに以下のオプションがあります。主にPlug-inの使い方のために新設。
+	-c	コールバック関数を使います。
+		-> コールバック関数を渡さないと不具合の発生するPlug-inを
+		   確認するため
+	-m	GetPicture/GetPreviewをメモリインタフェースで呼び出します。
+		-> 書庫内ファイルが扱えるかどうかを確認するため
+	-p	GetPictureのかわりにGetPreviewを呼び出します。
+		-> GetPreviewを実装していないPlug-inを確認するため
+	-i	GetPluginInfoでの結果も表示します
+		-> Plug-in情報を見たいかもしれないので・・・。
+	-o[n]	ConfigurationDlgをfnc=nとして呼び出す。
+
+
+8.2. ToBitmap
+  これは書庫内ファイルを扱うSpiFilesManage::OpenFileのデモだったはずで
+すが、書庫内ファイル名をD&Dしてくるアプリケーションが現在では存在しない
+のでデモの役に立っていません(_o_)。カタログ形式で表示している書庫ファイ
+ル内のファイルはファイルのメモリイメージが送られてくるためです。Susieの
+古いバージョンでは書庫ファイル内のファイル名が送られてくる筈です(動作確
+認してないけど)。
+ #SusieのSendToに入れる場合には書庫内ファイル名が指定されることがあります。
+
+  SusieのカタログやエクスプローラからD&DしてBitmapファイルに変換したい
+ファイルをDropします。するとファイルリスト一覧に追加されます。変換した
+結果を出力するディレクトリも[output directory]の編集可能なところへDrop
+して変更できます。
+  実際に変換対象となるのはファイル名の先頭にチェックが付いているものと
+なります。変換に成功するとチェックは自動的に外されます。変換中の進行状
+況はウィンドウ下部に表示されます。
+
+  [Convert]ボタンで変換開始します。
+  [Cancel]ボタンで変換動作を中止します。
+  [Delete]ボタンでファイルリストから選択したファイルを削除します。
+  [Close]ボタンでプログラムを終了します。
+
+  変換先に同じファイルがあるかどうかを確認していないので異なるディレクト
+リの同じファイル名があると上書きしてしまうので注意してください。
+
+  ただしいくつかのバグが修正されないままになっているので実用上は単独配布
+されている方のToBitmapを使ってください。
+
+
+8.3. CnvBmp
+  書庫内のファイルを取り扱うSpiFilesManage::OpenFileのサンプルです。
+  基本的には指定されたファイルと同じディレクトリにBitmapファイルを出力し
+ますが、書庫内ファイルを指定した場合には書庫内に追加するわけにはいかない
+のでカレントディレクトリに出力します。[名前をつけて保存する]のが面倒な場
+合に有効です。同じ名前のファイルがあった場合には上書きするので注意してく
+ださい。また変換元のファイルの拡張子が"bmp"である場合には出力画像ファイ
+ルは"XXX_.bmp"というように最後に"_"が付加されます。
+
+
+9. 他のサンプル
+  このWrapperライブラリを使ったほかのサンプルとしては自作のランダム壁
+紙チェンジャーがあります。公開していないのには特に理由は無いのでその
+うち置くかもしれませんが、今のところは問い合わせていただいた方にだけ配布
+しています。
+ #でもspi_wrapper pre Rev0.06だったりしていまいちかも。
+
+
+A. 連絡先
+  バグの報告／感想／要望は以下のアドレスにお願いします。
+        Internet E-Mail: inokuchi@mvg.biglobe.ne.jp
+        URL: http://www2f.biglobe.ne.jp/~kana/
+        NiftyServe: PXB13767
+
+B. 配布について
+  個人的な手渡し、転載などに関してはアーカイブを変更しない限りには制限
+しません。配布範囲を把握しておきたいので転載などの際は事後でよいので連
+絡をください。その時は「どこに転載した」ぐらいの文面で結構です。
+  ただし(無いと思いますが)雑誌などへの収録は一度連絡をください。
+
+ お約束ですが、このプログラム、ソースファイルの使用に起因するいかなる事
+態も責任を負いかねます。利用者の責任でお使いください。
+
+
+C. ソースの利用について
+ ・お願いで義務事項でないこと:
+  同梱のソースを(ソースの修正も含めて)再利用する際には、再利用したツール
+のドキュメントに出典を記述してくれると嬉しい。その時にも連絡をくれるとと
+っても嬉しいです(返事はしない可能性が高いですけど_o_)。
+ ・義務事項:
+  修正したソースを公開する際には、ソース中に修正箇所を明示するか同梱する
+ドキュメントなどに修正箇所(または目的)がわかるようにしてください。破壊的
+活動を目的としたソースの再利用・修正はおやめください。
+
+
+D. 謝辞
+  最後に、Susieという素晴らしいツールを作られた「たけちん」さんに感謝
+します。これからも頑張ってください。
+
+
+Z. 履歴
+00/09/03版(Rev0.06.4):
+            SpiFile::ConfigurationDlg, SpiDllFile::ConfigurationDlgを追加
+            SpiInputStream::operator=を修正(致命的)
+            spianyにConfigurationDlg関連を追加
+            spianyで-iオプションがデータファイルを指定しないと有効でないのを修正
+            spianyでPlug-inファイルを指定しないと落ちてしまうのを修正
+00/08/15版(Rev0.06.3):
+            SpiFileManage::OpenFileで存在しないファイルを指定した場合のバグ取り
+            cnvbmpで32bppの出力が変だったのを修正。
+00/01/03版(Rev0.06):
+            AM Plug-in関係のバグ取り
+            書庫内ファイルをオープンする関数とか追加(その関係でI/Fが増えた)
+            サンプルでToBitmap/CnvBmpを追加。amopenは破棄されました。
+            (履歴が2桁だけど、わかるよね。)
+99/02/02版: 出直し。
+            流行のPlug-inファイルの動的ロードへのコード追加(Optional)
+98/05/23版: spiany.cppにて00AM Plug-inの利用を記述
+            00AM Plug-inもかなり罠が存在模様。気がついたことはspiany.cpp
+            のソース中に記述。
+97/10/31版: spiany.cppがバグってました。-mオプションをつけるとほぼ100%
+            「未サポート」になってました。
+97/10/25版: 呼び出し側(spiany.cpp)のサンプルとして、メモリの解放を
+            ちゃんとするようにした。
+            以前のspiany2.exeはオプションで同等機能が実現できるので削除
+            その他細々と修正したけど、あまり確認してなかったりして(^^;。
+97/09/xx版: 初回公開

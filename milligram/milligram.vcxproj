@@ -89,6 +89,8 @@
       <Optimization>Disabled</Optimization>
       <PreprocessorDefinitions>WIN32;_DEBUG;_WINDOWS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
+      <LanguageStandard>stdcpp17</LanguageStandard>
+      <ForcedIncludeFiles>stdafx.h</ForcedIncludeFiles>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -117,6 +119,8 @@
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <PreprocessorDefinitions>WIN32;NDEBUG;_WINDOWS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
+      <LanguageStandard>stdcpp17</LanguageStandard>
+      <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -143,13 +147,27 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClInclude Include="acfc.h" />
+    <ClInclude Include="FormSizeForm.h" />
+    <ClInclude Include="Header.h" />
+    <ClInclude Include="InputForm.h" />
+    <ClInclude Include="MainForm.h" />
     <ClInclude Include="milligram.h" />
+    <ClInclude Include="ProgressForm.h" />
     <ClInclude Include="Resource.h" />
+    <ClInclude Include="spiplugin.h" />
     <ClInclude Include="stdafx.h" />
     <ClInclude Include="targetver.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="acfc.cpp" />
+    <ClCompile Include="FormSizeForm.cpp" />
+    <ClCompile Include="InputForm.cpp" />
+    <ClCompile Include="JpegSettingForm.cpp" />
+    <ClCompile Include="MainForm.cpp" />
     <ClCompile Include="milligram.cpp" />
+    <ClCompile Include="ProgressForm.cpp" />
+    <ClCompile Include="spiplugin.cpp" />
     <ClCompile Include="stdafx.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Create</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Create</PrecompiledHeader>
@@ -161,8 +179,55 @@
     <ResourceCompile Include="milligram.rc" />
   </ItemGroup>
   <ItemGroup>
-    <Image Include="milligram.ico" />
-    <Image Include="small.ico" />
+    <Image Include="icon.ico">
+      <DeploymentContent>true</DeploymentContent>
+    </Image>
+    <Image Include="trayicon0.ico">
+      <DeploymentContent>true</DeploymentContent>
+    </Image>
+    <Image Include="trayicon1.ico">
+      <DeploymentContent>true</DeploymentContent>
+    </Image>
+    <Image Include="trayicon2.ico">
+      <DeploymentContent>true</DeploymentContent>
+    </Image>
+    <Image Include="trayicon3.ico">
+      <DeploymentContent>true</DeploymentContent>
+    </Image>
+    <Image Include="trayicon4.ico">
+      <DeploymentContent>true</DeploymentContent>
+    </Image>
+    <Image Include="trayicon5.ico">
+      <DeploymentContent>true</DeploymentContent>
+    </Image>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="Grab_0.cur">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="Grab_1.cur">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="Grab_2.cur">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="Hand_0.cur">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="Hand_1.cur">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="Hand_2.cur">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="None.cur">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+  </ItemGroup>
+  <ItemGroup>
+    <Manifest Include="app.manifest">
+      <SubType>Designer</SubType>
+    </Manifest>
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

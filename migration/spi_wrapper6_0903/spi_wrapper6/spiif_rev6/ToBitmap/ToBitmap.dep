@@ -1,0 +1,22 @@
+# Microsoft Developer Studio Generated Dependency File, included by ToBitmap.mak
+
+.\StdAfx.cpp : \
+	".\StdAfx.h"\
+	
+
+.\ToBitmap.cpp : \
+	".\StdAfx.h"\
+	".\ToBitmap.h"\
+	".\ToBitmapDlg.h"\
+	
+
+.\ToBitmap.rc : \
+	".\res\ToBitmap.ico"\
+	".\res\ToBitmap.rc2"\
+	
+
+.\ToBitmapDlg.cpp : \
+	".\StdAfx.h"\
+	".\ToBitmap.h"\
+	".\ToBitmapDlg.h"\
+	
