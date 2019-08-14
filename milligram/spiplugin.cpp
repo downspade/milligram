@@ -2,6 +2,8 @@
 #include "spiplugin.h"
 #include "acfc.h"
 
+#define IGNORE_FILEMINSIZE 256
+
 namespace milligram
 {
 	CSpiLoader::CSpiLoader(void)
@@ -20,15 +22,6 @@ namespace milligram
 
 	CSpiLoader::~CSpiLoader(void)
 	{
-		Clear(EPluginMode_ALL);
-		Mode = EPluginMode_NONE;
-
-		ClearAllPlugins();
-
-		timeEndPeriod((UINT)ShortestPeriod);
-		CheckBackBuffer(0, 0);
-
-		Gdiplus::GdiplusShutdown(GdiplusToken);
 	}
 
 	void CSpiLoader::Init(HWND hWndNewOwner, FARPROC aProgressCallBack)
@@ -45,6 +38,19 @@ namespace milligram
 		ShortestPeriod = TimeCaps.wPeriodMin;
 
 		timeBeginPeriod((UINT)ShortestPeriod);
+	}
+
+	void CSpiLoader::Release(void)
+	{
+		Clear(EPluginMode_ALL);
+		Mode = EPluginMode_NONE;
+
+		ClearAllPlugins();
+
+		timeEndPeriod((UINT)ShortestPeriod);
+		CheckBackBuffer(0, 0);
+
+		Gdiplus::GdiplusShutdown(GdiplusToken);
 	}
 
 	void CSpiLoader::ClearAllPlugins(void)
@@ -157,7 +163,7 @@ namespace milligram
 			// ファイルはすでに存在していて、この関数は成功します
 			SizeL = GetFileSize(hFile, &SizeH);
 
-			if (SizeH == 0 && SizeL < 1024 * 1024 * 1024)
+			if (SizeH == 0 && SizeL < 1024 * 1024 * 1024 && SizeL >= IGNORE_FILEMINSIZE)
 			{
 				// メモリマップドファイルを作成する
 				hMap = CreateFileMapping(hFile, 0, PAGE_READWRITE, 0, 0, 0);
@@ -402,7 +408,7 @@ namespace milligram
 	bool CSpiLoader::LoadFromFileInMemory(CImageInfo &SrcImageInfo, BYTE* FileData, UINT DataSize, FARPROC ProgressCallback)
 	{
 		if (FileData == nullptr) return (false);
-		SPictureInfo PInfo = { 0 };
+		SPictureInfo PicInfo = { 0 };
 
 		Showing = false;
 
@@ -501,28 +507,34 @@ namespace milligram
 			}
 			SrcImageInfo.Rotate = Rotate;
 
-			if (PostSpi->GetPictureInfo((LPSTR)FileData, (int)DataSize, 1, &PInfo) != 0) return (false);
-			if(PInfo.Info != 0)GlobalFree(PInfo.Info);         // TEXT info 解放
+			try
+			{
+				//if (PostSpi->GetPictureInfo((LPSTR)FileData, (int)DataSize, 1, &PicInfo) == 0) return (false); 必ず失敗する関数があるらしい
+				//if (PicInfo.Info != 0)GlobalFree(PicInfo.Info);         // TEXT info 解放
+				HANDLE HBmpInfo, HBmpData;
 
-			HANDLE HBmpInfo, HBmpData;
+				if (PostSpi->GetPicture((LPSTR)FileData, (int)DataSize, 1, &HBmpInfo, &HBmpData, ProgressCallback, 0) != 0) return (false);
 
-			if (PostSpi->GetPicture((LPSTR)FileData, (int)DataSize, 1, &HBmpInfo, &HBmpData, ProgressCallback, 0) != 0) return (false);
+				Clear(EPluginMode_PICTURE);
 
-			Clear(EPluginMode_PICTURE);
+				HANDLE pBmp = GlobalLock(HBmpData); // Win32 API でロック
+				BITMAPINFO *pInfo = (BITMAPINFO*)GlobalLock(HBmpInfo);
 
-			HANDLE pBmp = GlobalLock(HBmpData); // Win32 API でロック
-			BITMAPINFO *pInfo = (BITMAPINFO*)GlobalLock(HBmpInfo);
+				OrgWidth = pInfo->bmiHeader.biWidth;
+				OrgHeight = pInfo->bmiHeader.biHeight;
 
-			OrgWidth = pInfo->bmiHeader.biWidth;
-			OrgHeight = pInfo->bmiHeader.biHeight;
+				BitmapGDIP = new Gdiplus::Bitmap(pInfo, pBmp);
+				BitmapGDIP->GetHBITMAP(0, &hBitmap);
 
-			BitmapGDIP = new Gdiplus::Bitmap(pInfo, pBmp);
-			BitmapGDIP->GetHBITMAP(0, &hBitmap);
-
-			GlobalUnlock(pBmp);
-			GlobalUnlock(pInfo);
-			GlobalFree(pBmp);
-			GlobalFree(pInfo);
+				GlobalUnlock(pBmp);
+				GlobalUnlock(pInfo);
+				GlobalFree(pBmp);
+				GlobalFree(pInfo);
+			}
+			catch (...)
+			{
+				return(false);
+			}
 
 			Mode = (EPluginMode)(Mode & (EPluginMode_ALL ^ EPluginMode_PICTURE));
 			Mode = (EPluginMode)(Mode | EPluginMode_SPI);
@@ -1139,10 +1151,10 @@ namespace milligram
 	}
 
 
-	bool CSpiLoader::GetArchiveFileList(std::vector<CImageInfo> &SubFileList) // ファイルリストを取得
+	bool CSpiLoader::GetArchiveFileList(std::vector<CImageInfo>* SubFileList) // ファイルリストを取得
 	{
 		int i;
-		SubFileList.clear();
+		SubFileList->clear();
 		for (i = 0; i < (int)(nowArchivedFileInfo.size()); i++)
 		{
 			std::wstring tPath = acfc::MultiByteToUnicode(nowArchivedFileInfo[i].Path);
@@ -1154,7 +1166,7 @@ namespace milligram
 			NewII.FileSize = nowArchivedFileInfo[i].FileSize;
 			NewII.Rotate = -1;
 			NewII.FileName = tPath + tFileName;
-			SubFileList.push_back(NewII);
+			SubFileList->push_back(NewII);
 		}
 		return (true);
 	}
@@ -1178,24 +1190,22 @@ namespace milligram
 		return (Result);
 	}
 
-	bool CSpiLoader::SetSubImageFile(std::vector<CImageInfo> &FileList, int &i, int Ofs)
+	bool CSpiLoader::SetSubImageFile(std::vector<CImageInfo>* FileList, int &i, int Ofs)
 	{
-		while (FileList.size() > 0)
+		while (FileList->size() > 0)
 		{
-			CImageInfo tempII = FileList[i];
-			if (SetSubImageFile(tempII) == true)
+			if (SetSubImageFile((*FileList)[i]) == true)
 			{
-				FileList[i] = tempII;
 				return (true);
 			}
 
-			std::vector<CImageInfo>::iterator itr = FileList.begin();
+			std::vector<CImageInfo>::iterator itr = FileList->begin();
 			itr += i;
-			FileList.erase(itr);
+			FileList->erase(itr);
 
 			if (Ofs < 0) i += Ofs;
 			if (i < 0) break;
-			if (i >= (int)(FileList.size())) break;
+			if (i >= (int)(FileList->size())) break;
 		}
 		return (false);
 	}
@@ -1225,9 +1235,16 @@ namespace milligram
 
 			if (hMemoryGDIP != nullptr)
 			{
+//				GlobalUnlock(hMemoryGDIP);
 				GlobalFree(hMemoryGDIP);
 				hMemoryGDIP = nullptr;
-				pMemoryGDIP = nullptr;  // GIFアニメの時に必要
+				pMemoryGDIP = nullptr;
+			}
+			
+			if (StreamGDIP != nullptr)
+			{
+				StreamGDIP->Release();
+				StreamGDIP = nullptr;
 			}
 
 			if (GIFAnimate)

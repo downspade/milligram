@@ -304,6 +304,7 @@ namespace milligram
 
 		// 初期化
 		void Init(HWND hWndNewOwner, FARPROC aProgressCallBack);
+		void Release(void);
 
 		// すべてのプラグインをクリアする
 		void ClearAllPlugins(void);
@@ -363,12 +364,12 @@ namespace milligram
 		// アーカイブファイ中のインデックスの番号のファイルを読み込む
 		bool SetShowSubIndex(CImageInfo &SrcImageInfo, int SubIndex, FARPROC ProgressCallback);
 		// アーカイブファイルの一覧を得る
-		bool GetArchiveFileList(std::vector<CImageInfo> &SubFileList); // ファイルリストを取得
+		bool GetArchiveFileList(std::vector<CImageInfo>* SubFileList); // ファイルリストを取得
 
 		// アーカイブファイル中の画像を読み込む
 		bool SetSubImageFile(CImageInfo &Src);
 		// アーカイブファイル中の画像を読み込む
-		bool SetSubImageFile(std::vector<CImageInfo> &FileList, int &i, int Ofs);
+		bool SetSubImageFile(std::vector<CImageInfo>* FileList, int &i, int Ofs);
 
 		// データをクリアする
 		void Clear(EPluginMode DelMode);
@@ -388,7 +389,7 @@ namespace milligram
 		bool SavePNG(std::wstring svFileName, int svWidth, int svHeight);
 
 
-};
+	};
 
 
 }

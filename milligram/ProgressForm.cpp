@@ -151,6 +151,15 @@ void CProgressForm::SearchFolder(std::wstring FolderPath)
 		if ((win32fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) == 0)
 		{
 			Target = FolderPath + TEXT("\\") + win32fd.cFileName;
+			if (acfc::GetFileExt(Target) == TEXT(".lnk"))
+			{
+				Target = acfc::GetFileFromLink(Target);
+				if (acfc::FolderExists(Target) == true)
+				{
+					Folders.push_back(Target);
+					continue;
+				}
+			}
 
 			/* ファイルが見つかったらVector配列に保存する */
 			if (FoundFiles.find(Target) == FoundFiles.end())

@@ -72,7 +72,7 @@ LRESULT CMainForm::SpiProgressCallBack(int nNum, int nDenom, long lData)
 			if (nNum == 0) break;
 			if (nNum > 0 && nNum < nDenom)
 			{
-				if (Now - LoadStart * nDenom / nNum > 500)
+				if ((Now - LoadStart) * nDenom / nNum > 500)
 				{
 					StartnNum = nNum;
 					LoadState = 1;
@@ -139,6 +139,7 @@ LRESULT CMainForm::SpiProgressCallBack(int nNum, int nDenom, long lData)
 
 CMainForm::CMainForm(void)
 {
+	DisplayList = &FileList;
 }
 
 CMainForm::~CMainForm(void)
@@ -186,9 +187,6 @@ bool CMainForm::Initialize(HINSTANCE hInstance, int nCmdShow, LPWSTR lpCmdLine)
 
 	ExeFileName = ExeParam[0]; // é¿çsÉtÉ@ÉCÉãñºÇÃê›íË
 	
-	// É_ÉCÉAÉçÉOÇÃèÄîı
-	PrepareDialog();
-
 	// Susie ä÷åWÇÃèÄîı
 	WheelPos = WheelSensitivity / 2;
 
@@ -225,6 +223,9 @@ bool CMainForm::Initialize(HINSTANCE hInstance, int nCmdShow, LPWSTR lpCmdLine)
 	Susie.FormHandle = hWindow;
 	Susie.InitSize(200, 200);
 
+	// É_ÉCÉAÉçÉOÇÃèÄîı
+	PrepareDialog();
+
 	CorrectWindow();
 
 	if (CmdLine == true) // ïùÇ∆çÇÇ≥Ç™åàÇ‹Ç¡ÇΩÇÃÇ≈Ç±Ç±Ç≈èÍèäÇê›íË
@@ -234,8 +235,16 @@ bool CMainForm::Initialize(HINSTANCE hInstance, int nCmdShow, LPWSTR lpCmdLine)
 		Left = CurPos.x - Width / 2;
 		Top = CurPos.y - Height / 2;
 		SetCenter(CurPos.x, CurPos.y);
+		GetMonitorParameter();
+
+		SetWindowPos(hWindow, nullptr, Left, Top, Width, Height, (SWP_NOZORDER | SWP_NOOWNERZORDER));
 	}
-	GetMonitorParameter();
+	else
+	{
+		if (PreShowingList)
+			ToggleShowList(EShowMode_LIST);
+	}
+
 
 	// ÉtÉ@ÉCÉãÉqÉXÉgÉäÇÃèàóù
 	ConvertHistoryMenu();
@@ -336,6 +345,7 @@ bool CMainForm::Initialize(HINSTANCE hInstance, int nCmdShow, LPWSTR lpCmdLine)
 
 	// ÉEÉBÉìÉhÉEÇÇ±Ç±Ç≈ï\é¶
 	ShowWindow(hWindow, nCmdShow);
+	Visible = true;
 	UpdateWindow(hWindow);
 	acfc::SetAbsoluteForegroundWindow(hWindow);
 
@@ -494,6 +504,8 @@ void CMainForm::CloseFromMessage(void)
 	EndGIFAnimeThread();
 
 	if (NotSaveIni == false) SaveIni(IniParamName);
+
+	Susie.Release();
 }
 
 
@@ -605,7 +617,7 @@ bool CMainForm::LoadIni(std::wstring IniName, bool CmdLine)
 
 	HideTaskButton = acfc::GetBoolValue(Map, TEXT("HideTaskButton"), true);
 
-	if (CmdLine || acfc::GetBoolValue(Map, TEXT("ShowingList"), true) == false) ToggleShowList(EShowMode_PICTURE);
+	PreShowingList = acfc::GetBoolValue(Map, TEXT("ShowingList"), true);
 
 	SlideShow = acfc::GetBoolValue(Map, TEXT("SlideShow"), false);
 	SSInterval = acfc::GetIntegerValue(Map, TEXT("SSInterval"), SSInterval, 0, 0);
@@ -713,18 +725,20 @@ bool CMainForm::LoadIni(std::wstring IniName, bool CmdLine)
 		&& CmdLine == false && LoadLastFile == true)
 	{
 		if (ShowIndex < 0) ShowIndex = 0;
-		LoadFileList(FileList, ArchiveFileList, Map);
-		DisplayList = FileList;
+		LoadFileList(FileList, Map);
+		DisplayList = &FileList;
 		if (ShowIndexBack < 0)
 		{
 			if (FileList.size() == 0 || acfc::FileExists(FileList[ShowIndex].FileName) == false) ShowIndex = -1;
 		}
 		else
 		{
-			i = IndexOfImageInfos(ArchiveFileList, FileList[ShowIndexBack].FileName);
-			if (i < 0 || acfc::FileExists(FileList[ShowIndexBack].FileName) == false)
+			if(ShowIndexBack >= (int)FileList.size() || ShowIndex < 0
+				|| ShowIndex >= (int)FileList[ShowIndexBack].ImageInfoList.size()
+				|| acfc::FileExists(FileList[ShowIndexBack].FileName) == false)
 			{
 				ShowIndexBack = -1;
+				ShowIndex = -1;
 			}
 		}
 	}
@@ -745,6 +759,7 @@ void CMainForm::SyncMenuChecked(void)
 	if (FixDiagonalLength)MnFixDiagonalLength_Click(false);
 	if (FixSizeRatio)MnFixRatio_Click();
 	if (FullScreen)MnFullScreen_Click();
+	if (SlideShow)MnSlideShow_Click();
 	if (Locked)MnLock_Click();
 	
 	if (FixRotate)MnRotateFix_Click();
@@ -861,8 +876,9 @@ bool CMainForm::SaveIni(std::wstring IniName)
 	if (acfc::FolderExists(IniFolderName + TEXT("\\milligram")) == false)
 		CreateDirectory((LPCWSTR)(IniFolderName + TEXT("\\milligram")).c_str(), nullptr);
 
-	acfc::SaveTextFile(PathName, sb);
 
+	acfc::SaveTextFile(PathName, sb);
+	
 	IniFileTime = GetCreationTime(PathName);
 
 	return (true);
@@ -881,28 +897,34 @@ std::wstring CMainForm::CreateFileList(void)
 {
 	int i, j;
 	std::wstring sb;
+	std::vector<CImageInfo *> ArchiveList;
+	bool ArcFile;
+
 
 	for (i = 0; i < (int)FileList.size(); i++)
 	{
+		ArcFile = FileList[i].ImageInfoList.size() > 0;
 		sb.append(TEXT("FileList") + std::to_wstring(i) + TEXT("=")
 			+ TEXT("Name=") + FileList[i].FileName
 			+ TEXT("\tTime=") + std::to_wstring(FileList[i].Timestamp)
 			+ TEXT("\tSize=") + std::to_wstring(FileList[i].FileSize)
 			+ TEXT("\tRotate=") + std::to_wstring(FileList[i].Rotate) + TEXT("\n"));
+
+		ArchiveList.push_back(&FileList[i]);
 	}
 
-	for (j = 0; j < (int)ArchiveFileList.size(); j++)
+	for (j = 0; j < (int)ArchiveList.size(); j++)
 	{
-		sb.append(TEXT("Archive") + std::to_wstring(j) + TEXT("=") + ArchiveFileList[j].FileName + TEXT("\n"));
+		sb.append(TEXT("Archive") + std::to_wstring(j) + TEXT("=") + ArchiveList[j]->FileName + TEXT("\n"));
 
-		std::vector<CImageInfo> tempIIL = ArchiveFileList[j].ImageInfoList;
-		for (i = 0; i < (int)tempIIL.size(); i++)
+		std::vector<CImageInfo> *tempIIL = &(ArchiveList[j]->ImageInfoList);
+		for (i = 0; i < (int)tempIIL->size(); i++)
 		{
 			sb.append(TEXT("ArchiveList") + std::to_wstring(j) + TEXT("-") + std::to_wstring(i) + TEXT("=")
-				+ TEXT("Name=") + tempIIL[i].FileName
-				+ TEXT("\tTime=") + std::to_wstring(tempIIL[i].Timestamp)
-				+ TEXT("\tSize=") + std::to_wstring(tempIIL[i].FileSize)
-				+ TEXT("\tRotate=") + std::to_wstring(tempIIL[i].Rotate) + TEXT("\n"));
+				+ TEXT("Name=") + (*tempIIL)[i].FileName
+				+ TEXT("\tTime=") + std::to_wstring((*tempIIL)[i].Timestamp)
+				+ TEXT("\tSize=") + std::to_wstring((*tempIIL)[i].FileSize)
+				+ TEXT("\tRotate=") + std::to_wstring((*tempIIL)[i].Rotate) + TEXT("\n"));
 		}
 	}
 	return (sb);
@@ -924,7 +946,7 @@ bool CMainForm::SaveFileList(std::wstring FileName)
 
 
 
-bool CMainForm::LoadFileList(std::vector<CImageInfo>& DestSL, std::vector<CImageInfo>& ArcLists, std::map<std::wstring, std::wstring>& Map)
+bool CMainForm::LoadFileList(std::vector<CImageInfo>& DestSL, std::map<std::wstring, std::wstring>& Map)
 {
 	int i, j, n;
 	std::wstring Temp, FName, FTime, FSize, FRotate;
@@ -969,25 +991,14 @@ bool CMainForm::LoadFileList(std::vector<CImageInfo>& DestSL, std::vector<CImage
 		
 		Temp = itr->second;
 
-		if (EnableFileMask && acfc::FitsMasks(Temp, FileMaskString) == false)
-		{
-			i++;
-			continue;
-		}
+		if (EnableFileMask && acfc::FitsMasks(Temp, FileMaskString) == false) { n++; continue; }
 
-		if (IndexOfImageInfos(DestSL, Temp) >= 0)
-		{
-			CImageInfo NewII;
-			NewII.FileName = Temp;
-			ArcLists.push_back(NewII);
-		}
-		n++;
-	}
+		i = IndexOfImageInfos(&DestSL, Temp);
 
-	for (j = 0; j < (int)ArcLists.size(); j++)
-	{
-		i = 0;
-		while ((itr = Map.find(TEXT("ArchiveList") + std::to_wstring(j) + TEXT("-") + std::to_wstring(i))) != Map.end())
+		if (i < 0) { n++; continue; }
+
+		j = 0;
+		while ((itr = Map.find(TEXT("ArchiveList") + std::to_wstring(n) + TEXT("-") + std::to_wstring(j))) != Map.end())
 		{
 			if ((GetAsyncKeyState(VK_ESCAPE) & 0x8000) > 0) break;
 
@@ -1002,7 +1013,7 @@ bool CMainForm::LoadFileList(std::vector<CImageInfo>& DestSL, std::vector<CImage
 
 			if (EnableFileMask && acfc::FitsMasks(FName, FileMaskString) == false)
 			{
-				i++;
+				j++;
 				continue;
 			}
 
@@ -1011,9 +1022,10 @@ bool CMainForm::LoadFileList(std::vector<CImageInfo>& DestSL, std::vector<CImage
 			NewII.Timestamp = acfc::GetIntegerValue(FTime);
 			NewII.FileSize = acfc::GetIntegerValue(FSize);
 			NewII.Rotate = acfc::GetIntegerValue(FRotate);
-			ArcLists[j].ImageInfoList.push_back(NewII);
-			i++;
+			DestSL[i].ImageInfoList.push_back(NewII);
+			j++;
 		}
+		n++;
 	}
 	return (true);
 }
@@ -1412,8 +1424,8 @@ LRESULT CMainForm::ProcessMessages(HWND hWnd, UINT message, WPARAM wParam, LPARA
 						MnOpenFolder_Click();
 						break;
 
-					case ID_POPUP_OPENEXISTSFOLDERFILES:
-						MnOpenFolderExistingShowingFile_Click();
+					case ID_POPUP_LOADEXISTSFOLDERFILES:
+						MnLoadFolderExistingShowingFile_Click();
 						break;
 
 					case ID_POPUP_CLOSEARCHIVE:
@@ -1632,6 +1644,7 @@ LRESULT CMainForm::ProcessMessages(HWND hWnd, UINT message, WPARAM wParam, LPARA
 			MouseLeave();
 			break;
 
+		case WM_SYSKEYDOWN:
 		case WM_KEYDOWN:
 			MainForm_KeyDown(wParam, lParam);
 			break;
@@ -1713,7 +1726,7 @@ void CMainForm::MainForm_KeyDown(WPARAM wParam, LPARAM lParam)
 		ShowAbsoluteImage(0, 1);
 		break;
 	case VK_END:
-		ShowAbsoluteImage(DisplayList.size() - 1, -1);
+		ShowAbsoluteImage(DisplayList->size() - 1, -1);
 		break;
 
 	case VK_RETURN:
@@ -1867,17 +1880,19 @@ LRESULT CMainForm::ProcessMessagesListBox(HWND hWnd, UINT message, WPARAM wParam
 		case WM_MOUSEHOVER:
 		case WM_MOUSELEAVE:
 		case WM_MOUSEMOVE:
-		case WM_LBUTTONDOWN:
 		case WM_RBUTTONDOWN:
 		case WM_MBUTTONDOWN:
 		case WM_LBUTTONUP:
 		case WM_RBUTTONUP:
 		case WM_MBUTTONUP:
+		case WM_LBUTTONDOWN:
 			ProcessMessages(hWnd, message, wParam, lParam, CallDefault);
 			break;
 		case WM_LBUTTONDBLCLK:
 			DisplayBox_DoubleClick();
 			break;
+
+		case WM_SYSKEYDOWN:
 		case WM_KEYDOWN:
 			DisplayBox_KeyDown(wParam, lParam);
 			break;
@@ -2219,38 +2234,37 @@ void CMainForm::OnPaint(void)
 		DeleteObject(&brush);
 	}
 
-	// ì«Ç›çûÇ›ÉâÉCÉìÇÃï\é¶
-	//if (LoadState == 1)
-	//{
-	//    Graphics g = this.CreateGraphics();
-	//    SolidBrush brush = new SolidBrush(FullFillColor);
+	/*
+	//ì«Ç›çûÇ›ÉâÉCÉìÇÃï\é¶
+	double P = (double)((timeGetTime() % 10000) / 10) / 1000;
 
-	//    brush.Color = DrawColor;
-	//    int barWidth = (int)(ProgressRatio * WWidth);
-	//    Gdiplus::Point offset = new Gdiplus::Point(0, 0);
-	//    if (FullScreen == false)
-	//    {
-	//        if (WLeft >= FrameWidth)
-	//            offset.X += FrameWidth;
-	//        else
-	//            offset.X += WLeft;
+	ProgressRatio = P;
+	Gdiplus::Graphics g(hWindow);
+	SolidBrush brush(DrawColor);
 
-	//        if (WTop >= FrameWidth)
-	//            offset.Y += FrameWidth;
-	//        else
-	//            offset.Y += WTop;
+	int barWidth = (int)(ProgressRatio * WWidth);
+	Point offset{ 0, 0 };
+	if (FullScreen == false)
+	{
+		if (WLeft >= FrameWidth)
+			offset.X += FrameWidth;
+		else
+			offset.X += WLeft;
+
+		if (WTop >= FrameWidth)
+			offset.Y += FrameWidth;
+		else
+			offset.Y += WTop;
 
 
-	//        g.FillRectangle(brush, offset.X, WHeight - 2 + offset.Y, barWidth, 2);
-	//    }
-	//    else
-	//    {
-	//        g.FillRectangle(brush, WLeft - MLeft, WTop + WHeight - 2 - MLeft, barWidth, 2);
-	//    }
+		g.FillRectangle(&brush, offset.X, WHeight - 2 + offset.Y, barWidth, 2);
+	}
+	else
+	{
+		g.FillRectangle(&brush, WLeft - MLeft, WTop + WHeight - 2 - MLeft, barWidth, 2);
+	}
 
-	//    brush.Dispose();
-	//    g.Dispose();
-	//}
+	DeleteObject(&brush);*/
 
 	if (SSIcon >= 0) DrawSSIcon();
 	EndUpdate();
@@ -2785,7 +2799,7 @@ CMainForm::EMousePositionType CMainForm::GetCursorPositionType(POINT &ScCurPos)
 		|| ScCurPos.x < WLeft - FrameWidth || ScCurPos.x > WLeft + WWidth + FrameWidth
 		|| ScCurPos.y < WTop - FrameWidth || ScCurPos.y > WTop + WHeight + FrameWidth)
 	{
-		SetCursorMode(EMousePositionType_NONE);
+		SetCursorMode(EMousePositionType_NORMAL);
 		return (EMousePositionType_NORMAL);
 	}
 
@@ -3269,11 +3283,11 @@ std::wstring CMainForm::GetTabString(std::wstring Src, std::wstring Name)
 	return (Result);
 }
 
-int CMainForm::IndexOfImageInfos(std::vector<CImageInfo> &Src, std::wstring FileName)
+int CMainForm::IndexOfImageInfos(std::vector<CImageInfo> *Src, std::wstring FileName)
 {
-	for (int i = 0; i < (int)Src.size(); i++)
+	for (int i = 0; i < (int)Src->size(); i++)
 	{
-		if (Src[i].FileName == FileName) return (i);
+		if ((*Src)[i].FileName == FileName) return (i);
 	}
 	return (-1);
 }
@@ -3302,6 +3316,8 @@ LPWSTR CMainForm::LoadStringBuffer(UINT uID)
 
 	return(result);
 }
+
+
 
 LPWSTR CMainForm::BufferString(TCHAR *src)
 {
@@ -3607,7 +3623,8 @@ void CMainForm::CreateFileMoveMenuFolder(std::wstring FolderName)
 	if (ThisFolder != TEXT(""))
 	{
 		MoveData.push_back(TEXT("?"));
-		menuItem.dwTypeData = LoadStringBuffer(IDS_MES_1036);
+		std::wstring tmp = ThisFolder + LoadStringResource(IDS_MES_1036);
+		menuItem.dwTypeData = BufferString((TCHAR *)tmp.c_str());
 		menuItem.wID = wID;
 		InsertMenuItem(hMoveMenu, Index, TRUE, &menuItem);
 		Index++;
@@ -3688,9 +3705,7 @@ void CMainForm::AbsoluteRotate(int Value)
 		Susie.AbsoluteRotate(Value);
 		RotateValue = Susie.Rotate;
 
-		CImageInfo tempII = DisplayList[ShowIndex];
-		tempII.Rotate = RotateValue;
-		DisplayList[ShowIndex] = tempII;
+		(*DisplayList)[ShowIndex].Rotate = RotateValue;
 
 		SetRotateImageSize();
 	}
@@ -3707,9 +3722,7 @@ void CMainForm::OffsetRotate(int Value)
 	CheckRotateCheck();
 	SetRotateImageSize();
 
-	CImageInfo tempII = DisplayList[ShowIndex];
-	tempII.Rotate = RotateValue;
-	DisplayList[ShowIndex] = tempII;
+	(*DisplayList)[ShowIndex].Rotate = RotateValue;
 }
 
 
@@ -3943,18 +3956,21 @@ bool CMainForm::CheckMinimalDiagonalLength(int &iWidth, int &iHeight)
 void CMainForm::CorrectWindow(void)
 {
 	int ShowLength = (int)sqrt(MinimalDiagonalLength);
-
-	if (WWidth > Desktop.Width)
-		WWidth = Desktop.Width, WHeight = (int)((double)WWidth * Susie.OrgHeight / Susie.OrgWidth);
-
-	if (WHeight > Desktop.Height)
-		WHeight = Desktop.Height, WWidth = (int)((double)WHeight * Susie.OrgWidth / Susie.OrgHeight);
-
-	if (WWidth > Desktop.Width)
-		WWidth = Desktop.Width, WHeight = (int)((double)WWidth * Susie.OrgHeight / Susie.OrgWidth);
-
-	if (WHeight > Desktop.Height)
-		WHeight = Desktop.Height, WWidth = (int)((double)WHeight * Susie.OrgWidth / Susie.OrgHeight);
+	bool Errored = false;
+	if (WWidth > Desktop.Width || WHeight > Desktop.Height)
+	{
+		if (WWidth > WHeight)
+		{
+			WWidth = Desktop.Width;
+			WHeight = (int)((double)WWidth * Susie.OrgHeight / Susie.OrgWidth);
+		}
+		else
+		{
+			WHeight = Desktop.Height;
+			WWidth = (int)((double)WHeight * Susie.OrgWidth / Susie.OrgHeight);
+		}
+		Errored = true;
+	}
 
 	if (WWidth < 0)
 	{
@@ -3962,7 +3978,7 @@ void CMainForm::CorrectWindow(void)
 			WWidth = (int)((double)WHeight * Susie.OrgWidth / Susie.OrgHeight);
 		else
 			WWidth = Susie.OrgWidth, WHeight = Susie.OrgHeight;
-
+		Errored = true;
 	}
 
 	if (WHeight < 0)
@@ -3971,26 +3987,32 @@ void CMainForm::CorrectWindow(void)
 			WHeight = (int)((double)WWidth * Susie.OrgHeight / Susie.OrgWidth);
 		else
 			WWidth = Susie.OrgWidth, WHeight = Susie.OrgHeight;
-
+		Errored = true;
 	}
 
-	if (Desktop.X + ShowLength > WLeft + WWidth)WLeft = Desktop.X + ShowLength - WWidth;
-	if (Desktop.Y + ShowLength > WTop + WHeight)WTop = Desktop.Y + ShowLength - WHeight;
-	if (Desktop.X + Desktop.Width - ShowLength < WLeft)WLeft = Desktop.X + Desktop.Width - ShowLength;
-	if (Desktop.Y + Desktop.Height - ShowLength < WTop)WTop = Desktop.Y + Desktop.Height - ShowLength;
+	if (Desktop.X + ShowLength > WLeft + WWidth)WLeft = Desktop.X + ShowLength - WWidth, Errored = true;
+	if (Desktop.Y + ShowLength > WTop + WHeight)WTop = Desktop.Y + ShowLength - WHeight, Errored = true;
+	if (Desktop.X + Desktop.Width - ShowLength < WLeft)WLeft = Desktop.X + Desktop.Width - ShowLength, Errored = true;
+	if (Desktop.Y + Desktop.Height - ShowLength < WTop)WTop = Desktop.Y + Desktop.Height - ShowLength, Errored = true;
 
-	CenterX = WLeft + WWidth / 2;
-	CenterY = WTop + WTop / 2;
+	if (Errored == true)
+	{
+		CenterX = WLeft + WWidth / 2;
+		CenterY = WTop + WTop / 2;
+	}
 
 	GetMonitorParameter();
 
-	if (MLeft + ShowLength > WLeft + WWidth)WLeft = MLeft + ShowLength - WWidth;
-	if (MTop + ShowLength > WTop + WHeight)WTop = MTop + ShowLength - WHeight;
-	if (MRight - ShowLength < WLeft)WLeft = MRight - ShowLength;
-	if (MBottom - ShowLength < WTop)WTop = MBottom - ShowLength;
+	if (MLeft + ShowLength > WLeft + WWidth)WLeft = MLeft + ShowLength - WWidth, Errored = true;
+	if (MTop + ShowLength > WTop + WHeight)WTop = MTop + ShowLength - WHeight, Errored = true;
+	if (MRight - ShowLength < WLeft)WLeft = MRight - ShowLength, Errored = true;
+	if (MBottom - ShowLength < WTop)WTop = MBottom - ShowLength, Errored = true;
 
-	CenterX = WLeft + WWidth / 2;
-	CenterY = WTop + WHeight / 2;
+	if (Errored == true)
+	{
+		CenterX = WLeft + WWidth / 2;
+		CenterY = WTop + WTop / 2;
+	}
 
 }
 
@@ -4280,13 +4302,13 @@ bool CMainForm::SetFileList(void)
 	int i;
 	DisplayBox.Items.clear();
 	DisplayBox.SelectedIndex = ShowIndex;
-	for (i = 0; i < (int)DisplayList.size(); i++)
+	for (i = 0; i < (int)DisplayList->size(); i++)
 	{
-		acfc::CListBox::CItem Item(acfc::GetMiniPathName(DisplayList[i].FileName, 1), false);
+		acfc::CListBox::CItem Item(acfc::GetMiniPathName((*DisplayList)[i].FileName, 1), false);
 		DisplayBox.Items.push_back(Item);
 	}
 	
-	if(ShowIndex > 0 && ShowIndex < (int)DisplayList.size())DisplayBox.SetSelected(ShowIndex, true);
+	if(ShowIndex > 0 && ShowIndex < (int)DisplayList->size())DisplayBox.SetSelected(ShowIndex, true);
 
 	DisplayBox.Set();
 
@@ -4299,7 +4321,7 @@ std::wstring CMainForm::GetImageFileName(void)
 	std::wstring Result;
 	if (ShowingList == true)
 	{
-		if (DisplayList.size() == 0) return (TEXT(""));
+		if (DisplayList->size() == 0) return (TEXT(""));
 	}
 	else
 	{
@@ -4349,22 +4371,10 @@ void CMainForm::SetImageFileNameString(std::wstring src)
 // åªç›ï\é¶íÜÇÃÉtÉ@ÉCÉãñºÇïœçXÇ∑ÇÈ
 bool CMainForm::SetImageFileName(std::wstring src)
 {
-	CImageInfo tempII;
-
 	if (InArchive == true)
 	{
-		int i = IndexOfImageInfos(ArchiveFileList, OpeningFileName);
-
-		tempII = ArchiveFileList[ShowIndexBack];
-		tempII.FileName = src;
-		ArchiveFileList[i] = tempII;
-
-		tempII = FileList[ShowIndexBack];
-		tempII.FileName = src;
-		FileList[ShowIndexBack] = tempII;
-
+		FileList[ShowIndexBack].FileName = src;
 		SetImageFileNameString(src);
-
 		Susie.ChangeArchiveFileName(src);
 	}
 	else
@@ -4374,9 +4384,7 @@ bool CMainForm::SetImageFileName(std::wstring src)
 			DisplayBox.SetText(acfc::GetMiniPathName(src, 1), ShowIndex);
 		}
 
-		tempII = FileList[ShowIndex];
-		tempII.FileName = src;
-		FileList[ShowIndex] = tempII;
+		FileList[ShowIndex].FileName = src;
 
 		SetImageFileNameString(src);
 	}
@@ -4386,18 +4394,20 @@ bool CMainForm::SetImageFileName(std::wstring src)
 // ï\é¶íÜÇÃÉtÉ@ÉCÉãñºÇÉ_ÉCÉAÉçÉOÉ{ÉbÉNÉXÇï\é¶ÇµÇƒïœçXÇ∑ÇÈ
 bool CMainForm::ChangeImageFileName(std::wstring newName)
 {
-	if (InArchive == true) return (false);
+	if (InArchive == true)
+	{
+		SetImageFileName(newName);
+		return (true);
+	}
 
 	DisplayBox.GetSelectedIndex();
+	DisplayBox.SelectedIndex = ShowIndex;
+	DisplayBox.SetSelectedIndex();
 	DisplayBox.SetText(acfc::GetMiniPathName(newName, 1), DisplayBox.SelectedIndex);
 
-	CImageInfo tempII;
-	tempII = FileList[DisplayBox.SelectedIndex];
-	tempII.FileName = newName;
-	FileList[DisplayBox.SelectedIndex] = tempII;
-	DisplayList[DisplayBox.SelectedIndex] = tempII;
+	(*DisplayList)[DisplayBox.SelectedIndex].FileName = newName;
 
-	SetImageFileNameString(newName);
+	SetImageFileName(newName);
 
 	return (true);
 }
@@ -4416,16 +4426,11 @@ bool CMainForm::OpenFiles(std::vector<std::wstring> &SrcLists, std::wstring Sele
 	if (FileLoading > 0) return (false);
 
 	bool AddLists;
-	std::vector<CImageInfo> ArcLists;
 	std::vector<CImageInfo> TempLists;
 
-	CheckGetLists(TempLists, ArcLists, SrcLists);
+	CheckGetLists(TempLists, SrcLists);
 
-	if (TempLists.size() == 0)
-	{
-		ArchiveFileList.clear();
-		return (true);
-	}
+	if (TempLists.size() == 0)return (true);
 
 	CloseArchiveMode();
 
@@ -4434,18 +4439,18 @@ bool CMainForm::OpenFiles(std::vector<std::wstring> &SrcLists, std::wstring Sele
 		|| AddMode)
 	{
 		AddLists = true;
-		AddFileList(TempLists, ArcLists, 1);
+		AddFileList(TempLists, 1);
 	}
 	else
 	{
 		AddLists = false;
-		AddFileList(TempLists, ArcLists, 0);
+		AddFileList(TempLists, 0);
 	}
 
 	if (FileList.size() == 0) return (false);
-	DisplayList = FileList;
+	DisplayList = &FileList;
 	SetFileList();
-	if (SelectedFile != TEXT("")) ShowIndex = IndexOfImageInfos(FileList, SelectedFile);
+	if (SelectedFile != TEXT("")) ShowIndex = IndexOfImageInfos(&FileList, SelectedFile);
 
 	ShowIndex += Offset;
 	while (ShowIndex < 0) ShowIndex += FileList.size();
@@ -4460,7 +4465,7 @@ bool CMainForm::OpenFiles(std::vector<std::wstring> &SrcLists, std::wstring Sele
 	return (true);
 }
 
-bool CMainForm::CheckGetLists(std::vector<CImageInfo> &DestLists, std::vector<CImageInfo> &ArcLists, std::vector<std::wstring> &DropLists)
+bool CMainForm::CheckGetLists(std::vector<CImageInfo> &DestLists, std::vector<std::wstring> &DropLists)
 {
 	int i;
 	for (i = 0; i < (int)DropLists.size(); i++)
@@ -4478,7 +4483,7 @@ bool CMainForm::CheckGetLists(std::vector<CImageInfo> &DestLists, std::vector<CI
 		{
 			std::map<std::wstring, std::wstring> Map;
 			acfc::LoadMapFromFile(Map, DropLists[i]);
-			LoadFileList(DestLists, ArcLists, Map);
+			LoadFileList(DestLists, Map);
 		}
 		else
 		{
@@ -4520,7 +4525,7 @@ bool CMainForm::GetImageLists(std::wstring Src, std::vector<CImageInfo> &Dest, b
 	return (true);
 }
 
-bool CMainForm::AddFileList(std::vector<CImageInfo> &SrcLists, std::vector<CImageInfo> &ArcLists, int Mode)
+bool CMainForm::AddFileList(std::vector<CImageInfo> &SrcLists, int Mode)
 {
 	CloseArchiveMode();
 	switch (Mode)
@@ -4529,16 +4534,11 @@ bool CMainForm::AddFileList(std::vector<CImageInfo> &SrcLists, std::vector<CImag
 	case 0:
 		ShowIndex = 0;
 		FileList.clear();
-		ArchiveFileList.clear();
 		Susie.Clear(EPluginMode_ALL);
 
 		if (SrcLists.size() > 0)
 		{
 			FileList = SrcLists;
-		}
-		if (ArcLists.size() > 0)
-		{
-			ArchiveFileList = ArcLists;
 		}
 		break;
 
@@ -4548,12 +4548,11 @@ bool CMainForm::AddFileList(std::vector<CImageInfo> &SrcLists, std::vector<CImag
 
 		while (SrcLists.size() > 0)
 		{
-			if (IndexOfImageInfos(FileList, SrcLists[0].FileName) < 0)
+			if (IndexOfImageInfos(&FileList, SrcLists[0].FileName) < 0)
 				FileList.push_back(SrcLists[0]);
 
 			SrcLists.erase(SrcLists.begin());
 		}
-		if (ArcLists.size() > 0) std::copy(ArcLists.begin(), ArcLists.end(), std::back_inserter(ArchiveFileList));
 
 		if (ShowIndex >= (int)FileList.size())
 			ShowIndex = FileList.size() - 1;
@@ -4566,7 +4565,8 @@ bool CMainForm::DeleteFileList(int DeleteMode)  // 1 ÉtÉ@ÉCÉãÇÉSÉ~î†Ç…à⁄Ç∑ 2 äm
 {
 	int i;
 	DisplayBox.BeginUpdate();
-	DisplayBox.Get();
+	DisplayBox.GetSelectedIndex();
+	DisplayBox.GetSelectList();
 	int SelectedIndex = DisplayBox.SelectedIndex;
 
 	if ((ShowingList == false && ShowIndex == -1) || (ShowingList == true && SelectedIndex < 0)) return (false);
@@ -4594,7 +4594,7 @@ bool CMainForm::DeleteFileList(int DeleteMode)  // 1 ÉtÉ@ÉCÉãÇÉSÉ~î†Ç…à⁄Ç∑ 2 äm
 					{
 						if (DisplayBox.Items[i].Selected == true) break;
 					}
-					Mes = acfc::GetMiniPathName(DisplayList[i].FileName, 1) + TEXT("\n");
+					Mes = acfc::GetMiniPathName((*DisplayList)[i].FileName, 1) + TEXT("\n");
 				}
 				else
 					Mes = LoadStringResource(IDS_MES_1009);
@@ -4610,7 +4610,7 @@ bool CMainForm::DeleteFileList(int DeleteMode)  // 1 ÉtÉ@ÉCÉãÇÉSÉ~î†Ç…à⁄Ç∑ 2 äm
 			for (i = 0; i < (int)DisplayBox.Items.size(); i++)
 			{
 				if(DisplayBox.Items[i].Selected)
-					DelList.push_back(DisplayList[i].FileName);
+					DelList.push_back((*DisplayList)[i].FileName);
 			}
 			bResult = acfc::DeleteFileToRecycle(DelList, false);
 		}
@@ -4621,14 +4621,14 @@ bool CMainForm::DeleteFileList(int DeleteMode)  // 1 ÉtÉ@ÉCÉãÇÉSÉ~î†Ç…à⁄Ç∑ 2 äm
 				int Result;
 				std::wstring Mes;
 
-				Mes = acfc::GetMiniPathName(DisplayList[ShowIndex].FileName, 1) + TEXT("\n");
+				Mes = acfc::GetMiniPathName((*DisplayList)[ShowIndex].FileName, 1) + TEXT("\n");
 
 				Mes += LoadStringResource(IDS_MES_1010);
 				Result = MessageBox(hWindow, Mes.c_str(), TEXT("Ask"), MB_YESNO | MB_ICONQUESTION); 
 				
 				if (Result == IDNO) return (false);
 
-				bResult = acfc::DeleteFileToRecycle(DisplayList[ShowIndex].FileName, false);
+				bResult = acfc::DeleteFileToRecycle((*DisplayList)[ShowIndex].FileName, false);
 			}
 		}
 
@@ -4656,7 +4656,7 @@ bool CMainForm::DeleteFileList(int DeleteMode)  // 1 ÉtÉ@ÉCÉãÇÉSÉ~î†Ç…à⁄Ç∑ 2 äm
 	}
 	else
 	{
-		if (ShowIndex >= 0 && ShowIndex < (int)DisplayList.size())
+		if (ShowIndex >= 0 && ShowIndex < (int)DisplayList->size())
 			DeleteFileInList(ShowIndex);
 	}
 	DisplayBox.EndUpdate();
@@ -4668,7 +4668,8 @@ bool CMainForm::DeleteFileInList(int i)
 	if (ShowingList == true)
 	{
 		DisplayBox.BeginUpdate();
-		DisplayBox.Get();
+		DisplayBox.GetSelectedIndex();
+		DisplayBox.GetSelectList();
 
 		if (DisplayBox.SelectedCount > 0)
 		{
@@ -4679,7 +4680,7 @@ bool CMainForm::DeleteFileInList(int i)
 			}
 
 			int PreviousII = DisplayBox.SelectedIndex;
-			DisplayList.erase(DisplayList.begin() + i);
+			DisplayList->erase(DisplayList->begin() + i);
 			DisplayBox.Delete(i);
 
 			if (DisplayBox.Items.size() == 0)
@@ -4706,8 +4707,8 @@ bool CMainForm::DeleteFileInList(int i)
 	}
 	else
 	{
-		DisplayList.erase(DisplayList.begin() + i);
-		if (DisplayList.size() == 0)
+		DisplayList->erase(DisplayList->begin() + i);
+		if (DisplayList->size() == 0)
 		{
 			if (InArchive == true)
 			{
@@ -4722,20 +4723,6 @@ bool CMainForm::DeleteFileInList(int i)
 		}
 		ShowOffsetImage(0);
 	}
-	return (true);
-}
-
-bool CMainForm::DeleteArchiveData(std::wstring ArcFileName)
-{
-	int i = IndexOfImageInfos(FileList, ArcFileName);
-	if (i < 0) return (false);
-
-	FileList.erase(FileList.begin() + i);
-
-	i = IndexOfImageInfos(ArchiveFileList, ArcFileName);
-	if (i < 0) return (false);
-
-	ArchiveFileList.erase(FileList.begin() + i);
 	return (true);
 }
 
@@ -4778,9 +4765,9 @@ bool CMainForm::MoveSelectedList(int Offset)
 
 			k--;
 
-			CImageInfo tempII = DisplayList[j];
-			DisplayList.erase(DisplayList.begin() + j);
-			DisplayList.insert(DisplayList.begin() + k, tempII);
+			CImageInfo tempII = (*DisplayList)[j];
+			DisplayList->erase(DisplayList->begin() + j);
+			DisplayList->insert(DisplayList->begin() + k, tempII);
 
 			acfc::CListBox::CItem tempItem = DisplayBox.Items[j];
 			DisplayBox.Delete(j);
@@ -4823,9 +4810,9 @@ bool CMainForm::MoveSelectedList(int Offset)
 
 			k++;
 
-			CImageInfo tempII = DisplayList[j];
-			DisplayList.erase(DisplayList.begin() + j);
-			DisplayList.insert(DisplayList.begin() + k, tempII);
+			CImageInfo tempII = (*DisplayList)[j];
+			DisplayList->erase(DisplayList->begin() + j);
+			DisplayList->insert(DisplayList->begin() + k, tempII);
 
 			std::wstring tempText = DisplayBox.Items[j].Text;
 			bool tempBool = DisplayBox.Items[j].Selected;
@@ -4845,30 +4832,30 @@ bool CMainForm::MoveSelectedList(int Offset)
 		DisplayBox.SelectedIndex = SelIndex + Offset;
 		DisplayBox.SetSelected(SelIndex + Offset, true);
 	}
-
+//	DisplayBox.Set();
 	DisplayBox.EndUpdate();
 	return (true);
 }
 
 bool CMainForm::SortFileList(ESortType Type)
 {
-	if (DisplayList.size() == 0) return (false);
+	if (DisplayList->size() == 0) return (false);
 	DisplayBox.GetSelectList();
 
 	int i, j;
 	std::vector<CImageInfo> Temp;
-	std::wstring OldFileName = DisplayList[ShowIndex].FileName;
+	std::wstring OldFileName = (*DisplayList)[ShowIndex].FileName;
 
 	if (DisplayBox.SelectedCount <= 1)
 	{
-		std::copy(DisplayList.begin(), DisplayList.end(), std::back_inserter(Temp));
+		std::copy(DisplayList->begin(), DisplayList->end(), std::back_inserter(Temp));
 	}
 	else
 	{
-		for (i = 0; i < (int)DisplayList.size(); i++)
+		for (i = 0; i < (int)DisplayList->size(); i++)
 		{
 			if (DisplayBox.Items[i].Selected)
-				Temp.push_back(DisplayList[i]);
+				Temp.push_back((*DisplayList)[i]);
 		}
 	}
 
@@ -4900,16 +4887,16 @@ bool CMainForm::SortFileList(ESortType Type)
 
 	if (DisplayBox.SelectedCount <= 1)
 	{
-		DisplayList = Temp;
+		*DisplayList = Temp;
 	}
 	else
 	{
 		j = 0;
-		for (i = 0; i < (int)DisplayList.size(); i++)
+		for (i = 0; i < (int)DisplayList->size(); i++)
 		{
 			if (DisplayBox.Items[i].Selected)
 			{
-				DisplayList[i] = Temp[j];
+				(*DisplayList)[i] = Temp[j];
 				j++;
 				if (j == Temp.size()) break;
 			}
@@ -4948,47 +4935,34 @@ bool CMainForm::OpenArchiveMode(CImageInfo &SrcImageInfo, int SubIndex, int Ofs,
 	InArchive = true;
 	SetMenuEnabled(hPopupMenu, ID_POPUP_CLOSEARCHIVE, true);
 
+	DisplayList = &(SrcImageInfo.ImageInfoList);
+
 	SetImageFileNameString(SrcImageInfo.FileName);
 
-	int i = IndexOfImageInfos(ArchiveFileList, SrcImageInfo.FileName);
 	int j;
-	if (i < 0) // ArchiveFileList Ç…Ç‹ÇæãLç⁄Ç™Ç»Ç¢
+	if (DisplayList->size() == 0) // ArchiveFileList Ç…Ç‹ÇæãLç⁄Ç™Ç»Ç¢
 	{
-		DisplayList.clear();
-
-		i = ArchiveFileList.size();
-		ArchiveFileList.push_back(SrcImageInfo);
-
 		// ÉAÅ[ÉJÉCÉuÉtÉ@ÉCÉãÇ©ÇÁÉäÉXÉgÇéÊìæ
 		Susie.GetArchiveFileList(DisplayList);
-		for (j = 0; j < (int)DisplayList.size(); j++)
+		for (j = 0; j < (int)DisplayList->size(); j++)
 		{
-			CImageInfo TempII = DisplayList[j];
-			TempII.FileName = DisplayList[j].FileName;
+			CImageInfo TempII = (*DisplayList)[j];
+			TempII.FileName = (*DisplayList)[j].FileName;
 			if (TempII.FileName.length() == 0
 				||
-				(EnableFileMask && acfc::FitsMasks(DisplayList[j].FileName, FileMaskString) == false)
+				(EnableFileMask && acfc::FitsMasks((*DisplayList)[j].FileName, FileMaskString) == false)
 				)
 			{
-				DisplayList.erase(DisplayList.begin() + j);
+				DisplayList->erase(DisplayList->begin() + j);
 				j--;
 			}
 		}
-
-		CImageInfo ArcII = ArchiveFileList[i];
-		ArcII.FileName = SrcImageInfo.FileName;
-		ArcII.ImageInfoList = DisplayList;
-		ArchiveFileList[i] = ArcII;
-	}
-	else
-	{
-		DisplayList = ArchiveFileList[i].ImageInfoList;
 	}
 
 	ShowIndexBack = ShowIndex;
 
 	// ï\é¶Ç∑ÇÈÉtÉ@ÉCÉãÇ™Ç»ÇØÇÍÇŒèIóπ
-	if (DisplayList.size() == 0)
+	if (DisplayList->size() == 0)
 	{
 		CloseArchiveMode();
 		return (false);
@@ -4997,7 +4971,7 @@ bool CMainForm::OpenArchiveMode(CImageInfo &SrcImageInfo, int SubIndex, int Ofs,
 	if (SubIndex < 0)
 	{
 		if (Ofs < 0)
-			ShowIndex = DisplayList.size() - 1;
+			ShowIndex = DisplayList->size() - 1;
 		else
 			ShowIndex = 0;
 	}
@@ -5021,11 +4995,11 @@ bool CMainForm::CloseArchiveMode(void)
 	if (InArchive == false) return (true);
 	SetMenuEnabled(hPopupMenu, ID_POPUP_CLOSEARCHIVE, false);
 
-	if (DisplayList.size() == 0)
-		DeleteArchiveData(FileList[ShowIndexBack].FileName);
+	if (DisplayList->size() == 0)
+		FileList.erase(FileList.begin() + ShowIndexBack);
 
 	Susie.Clear(EPluginMode_ALL);
-	DisplayList = FileList;
+	DisplayList = &FileList;
 	ShowIndex = ShowIndexBack;
 
 	if ((int)FileList.size() <= ShowIndex) ShowIndex = FileList.size() - 1;
@@ -5067,13 +5041,13 @@ void CMainForm::ToggleShowList(EShowMode Mode) // Mode 0:îΩì] 1:ÉäÉXÉgï\é¶ 2:âÊë
 		if (ShowFromShowIndex == false)
 		{
 			DisplayBox.GetSelectedIndex();
-			if (DisplayBox.SelectedIndex >= 0 && DisplayBox.SelectedIndex < (int)DisplayList.size())
+			if (DisplayBox.SelectedIndex >= 0 && DisplayBox.SelectedIndex < (int)DisplayList->size())
 				Result = ShowAbsoluteImage(DisplayBox.SelectedIndex, -1, 1, Mode == EShowMode_FORCEPICTURE);
 		}
 		else
 		{
 			ShowFromShowIndex = false;
-			if (ShowIndex >= 0 && ShowIndex < (int)DisplayList.size())
+			if (ShowIndex >= 0 && ShowIndex < (int)DisplayList->size())
 				Result = ShowAbsoluteImage(ShowIndex, -1, 1, Mode == EShowMode_FORCEPICTURE);
 		}
 	}
@@ -5110,11 +5084,11 @@ void CMainForm::ToggleShowList(EShowMode Mode) // Mode 0:îΩì] 1:ÉäÉXÉgï\é¶ 2:âÊë
 				}
 				Ratio = (double)WWidth / WHeight;
 			}
-			InvalidateRect(hWindow, 0, TRUE);
 		}
 		else
 		{
-			ShowIndex = DisplayBox.SelectedIndex;
+			DisplayBox.SelectedIndex = ShowIndex;
+			DisplayBox.SetSelectedIndex();
 			DisplayBox.Hide();
 			SetMenuText(hPopupMenu, ID_POPUP_TOGGLEIMAGELIST, LoadStringResource(IDS_MES_1015));
 		}
@@ -5129,15 +5103,12 @@ CMainForm::ELoadFileResult CMainForm::LoadFile(int Index, int SubIndex, int Ofs,
 	ELoadFileResult FuncResult = ELoadFileResult_OK;
 
 	if (ShowIndex < 0) ShowIndex = 0;
-	if (ShowIndex >= (int)DisplayList.size()) ShowIndex = DisplayList.size() - 1;
+	if (ShowIndex >= (int)DisplayList->size()) ShowIndex = DisplayList->size() - 1;
 
 	Susie.GIFLooping = false;
 
-	CImageInfo tempII = DisplayList[ShowIndex];
+	OpenResult = OpenFile((*DisplayList)[ShowIndex]);
 
-	OpenResult = OpenFile(tempII);
-
-	DisplayList[ShowIndex] = tempII;
 	LoadState = 0;
 	ProgressRatio = 0;
 
@@ -5147,25 +5118,22 @@ CMainForm::ELoadFileResult CMainForm::LoadFile(int Index, int SubIndex, int Ofs,
 
 	if ((Susie.Mode & EPluginMode_ARCHIVE) != 0 && InArchive == false)
 	{
-		if (OpenArchiveMode(tempII, SubIndex, Ofs, MustShowImage) == false)
+		if (OpenArchiveMode((*DisplayList)[ShowIndex], SubIndex, Ofs, MustShowImage) == false)
 		{
-			if (IndexOfImageInfos(ArchiveFileList, tempII.FileName) != ShowIndex)
+			if (IndexOfImageInfos(DisplayList, (*DisplayList)[ShowIndex].FileName) != ShowIndex)
 			{
 				AdjustShowIndex(Ofs);
 			}
 			return (ELoadFileResult_RETRYSAMEINDEX);
 		}
-		FileList[ShowIndexBack] = tempII;
 		FuncResult = ELoadFileResult_OPENARCHIVE;
 	}
 	else
 	{
 		if (InArchive == false)
 		{
-			tempII = DisplayList[ShowIndex];
-			tempII.Timestamp = acfc::GetFileCreationTime(DisplayList[ShowIndex].FileName);
-			tempII.FileSize = acfc::GetFileSizeValue(DisplayList[ShowIndex].FileName);
-			DisplayList[ShowIndex] = tempII;
+			(*DisplayList)[ShowIndex].Timestamp = acfc::GetFileCreationTime((*DisplayList)[ShowIndex].FileName);
+			(*DisplayList)[ShowIndex].FileSize = acfc::GetFileSizeValue((*DisplayList)[ShowIndex].FileName);
 		}
 		FuncResult = ELoadFileResult_OK;
 	}
@@ -5183,30 +5151,30 @@ CMainForm::ELoadFileResult CMainForm::LoadFile(int Index, int SubIndex, int Ofs,
 	if (Susie.GIFAnimate == true)
 		BeginGIFAnimeThread();
 
-	//	Hint = GetShortFileName(DisplayList.Strings[ShowIndex]);
+	//	Hint = GetShortFileName(DisplayList->Strings[ShowIndex]);
 	return (FuncResult);
 }
 
 bool CMainForm::AdjustShowIndex(int Ofs)
 {
 	ShowIndex += Ofs;
-	if (DisplayList.size() == 0)
+	if (DisplayList->size() == 0)
 	{
 		ShowIndex = -1;
 		return (false);
 	}
-	while (ShowIndex < 0) ShowIndex += DisplayList.size();
-	while (ShowIndex >= (int)DisplayList.size()) ShowIndex -= DisplayList.size();
+	while (ShowIndex < 0) ShowIndex += DisplayList->size();
+	while (ShowIndex >= (int)DisplayList->size()) ShowIndex -= DisplayList->size();
 	return (true);
 }
 
 bool CMainForm::JumpBorderArcNml(int Ofs)
 {
-	if (InArchive && (ShowIndex < 0 || ShowIndex >= (int)DisplayList.size()))
+	if (InArchive && (ShowIndex < 0 || ShowIndex >= (int)DisplayList->size()))
 	{
 		CloseArchiveMode();
 
-		if (DisplayList.size() == 0)
+		if (DisplayList->size() == 0)
 		{
 			ShowIndex = -1;
 		}
@@ -5214,8 +5182,8 @@ bool CMainForm::JumpBorderArcNml(int Ofs)
 		{
 			ShowIndex += Ofs;
 
-			while (ShowIndex < 0) ShowIndex += (int)DisplayList.size();
-			while (ShowIndex >= (int)DisplayList.size()) ShowIndex -= DisplayList.size();
+			while (ShowIndex < 0) ShowIndex += (int)DisplayList->size();
+			while (ShowIndex >= (int)DisplayList->size()) ShowIndex -= DisplayList->size();
 		}
 	}
 	return (true);
@@ -5224,27 +5192,28 @@ bool CMainForm::JumpBorderArcNml(int Ofs)
 // åªç›ï\é¶Ç≥ÇÍÇƒÇ¢ÇÈâÊëúÇ©ÇÁ Ofs Ç∏ÇÁÇµÇΩÉCÉìÉfÉbÉNÉXÇÃâÊëúÇï\é¶Ç∑ÇÈ
 bool CMainForm::ShowOffsetImage(int Ofs)
 {
-	if (AutoLoadFileFolder == true && ShowingList == false && DisplayList.size() == 1 && InArchive == false && SlideShow == false)
+	if (AutoLoadFileFolder == true && ShowingList == false && DisplayList->size() == 1 && InArchive == false && SlideShow == false)
 	{
 		std::wstring FolderName = acfc::GetFolderName(OpeningFileName);
 		if (FolderName == TEXT("")) return (true);
 
 		std::vector<std::wstring> TempSL;
+		std::vector<std::wstring> OpenSL;
 		TempSL.push_back(FolderName);
 		OpenFiles(TempSL, OpeningFileName, Ofs, false);
 	}
-	else if (ShowingList == false && DisplayList.size() > 0)
+	else if (ShowingList == false && DisplayList->size() > 0)
 	{
 		ShowIndex += Ofs;
 
-		if (InArchive && (ShowIndex < 0 || ShowIndex >= (int)DisplayList.size()))
+		if (InArchive && (ShowIndex < 0 || ShowIndex >= (int)DisplayList->size()))
 			JumpBorderArcNml(Ofs);
 
 		while (ShowIndex < 0)
-			ShowIndex += DisplayList.size();
+			ShowIndex += DisplayList->size();
 
-		while (ShowIndex >= (int)DisplayList.size())
-			ShowIndex -= DisplayList.size();
+		while (ShowIndex >= (int)DisplayList->size())
+			ShowIndex -= DisplayList->size();
 
 		ShowAbsoluteImage(ShowIndex, Ofs);
 	}
@@ -5273,7 +5242,7 @@ int CMainForm::ShowAbsoluteImage(int Index, int SubIndex, int Ofs, bool MustShow
 
 	SSTimer.Enabled(false);
 
-	while (DisplayList.size() > 0)
+	while (DisplayList->size() > 0)
 	{
 		Result = LoadFile(ShowIndex, SubIndex, Ofs, MustShowImage);
 
@@ -5289,7 +5258,7 @@ int CMainForm::ShowAbsoluteImage(int Index, int SubIndex, int Ofs, bool MustShow
 			SSTimer.Enabled(SlideShow);
 			if (InArchive == false)
 			{
-				SetImageFileNameString(DisplayList[ShowIndex].FileName);
+				SetImageFileNameString((*DisplayList)[ShowIndex].FileName);
 				//					FileChanged.SetCheckFile(OpeningFileName);
 			}
 			FileLoading--;
@@ -5299,7 +5268,7 @@ int CMainForm::ShowAbsoluteImage(int Index, int SubIndex, int Ofs, bool MustShow
 			if (MustShowImage)
 			{
 				SetNewImageSize();
-				//					Hint = GetShortFileName(DisplayList.Strings[ShowIndex]);
+				//					Hint = GetShortFileName(DisplayList->Strings[ShowIndex]);
 			}
 			SSTimer.Enabled(SlideShow);
 			FileLoading--;
@@ -5309,12 +5278,12 @@ int CMainForm::ShowAbsoluteImage(int Index, int SubIndex, int Ofs, bool MustShow
 		case ELoadFileResult_NOARCHIVE:
 			if (InArchive == true) CloseArchiveMode();
 
-			DisplayList.erase(DisplayList.begin() + ShowIndex);
+			DisplayList->erase(DisplayList->begin() + ShowIndex);
 			DisplayBox.Delete(ShowIndex);
 
 			if (Ofs >= 0)
 			{
-				if (ShowIndex >= (int)DisplayList.size())
+				if (ShowIndex >= (int)DisplayList->size())
 				{
 					if (InArchive == true)
 						JumpBorderArcNml(Ofs);
@@ -5328,24 +5297,22 @@ int CMainForm::ShowAbsoluteImage(int Index, int SubIndex, int Ofs, bool MustShow
 				if (ShowIndex < 0)
 				{
 					if (InArchive == true)
-						ShowIndex = DisplayList.size() - 1;
+						ShowIndex = DisplayList->size() - 1;
 					else
 						JumpBorderArcNml(Ofs);
 				}
 			}
 			break;
 
-			// MIV_SI_NOMASKORFILE:É}ÉXÉNÇ…äYìñÇµÇ»Ç¢
+			// MIV_SI_NOMASKORFILE:ì«Ç›çûÇ›é∏îsÇ©É}ÉXÉNÇ…äYìñÇµÇ»Ç¢
 		case ELoadFileResult_FAILEDORNOMASK:
 
-			if (InArchive)
-				DeleteArchiveData(DisplayList[ShowIndex].FileName);
-
-			DisplayList.erase(DisplayList.begin() + ShowIndex);
+			DisplayList->erase(DisplayList->begin() + ShowIndex);
+			DisplayBox.Delete(ShowIndex);
 
 			if (Ofs >= 0)
 			{
-				if (ShowIndex >= (int)DisplayList.size())
+				if (ShowIndex >= (int)DisplayList->size())
 				{
 					if (InArchive == true)
 						JumpBorderArcNml(Ofs);
@@ -5359,7 +5326,7 @@ int CMainForm::ShowAbsoluteImage(int Index, int SubIndex, int Ofs, bool MustShow
 				if (ShowIndex < 0)
 				{
 					if (InArchive == true)
-						ShowIndex = DisplayList.size() - 1;
+						ShowIndex = DisplayList->size() - 1;
 					else
 						JumpBorderArcNml(Ofs);
 				}
@@ -5581,7 +5548,7 @@ void CMainForm::MnInScreen_Click(void)
 {
 	if (UseWholeScreen) MnUseWholeScreen_Click();
 
-	GetMonitorParameter();
+	CorrectWindow();
 
 	double dTop, dLeft, dWidth, dHeight, pWidth, pHeight;
 
@@ -5810,7 +5777,7 @@ void CMainForm::MnOpenFolder_Click(void)
 	RestoreStayOnTop();
 }
 
-void CMainForm::MnOpenFolderExistingShowingFile_Click(void)
+void CMainForm::MnLoadFolderExistingShowingFile_Click(void)
 {
 	if (FileList.size() == 0) return;
 
@@ -5834,7 +5801,7 @@ void CMainForm::MnCloseArchive_Click(void)
 {
 	if (InArchive == false) return;
 
-	ShowIndex = DisplayList.size();
+	ShowIndex = DisplayList->size();
 
 	if (ShowingList == true)
 		JumpBorderArcNml(0);
@@ -5842,15 +5809,16 @@ void CMainForm::MnCloseArchive_Click(void)
 		JumpBorderArcNml(1);
 
 	while (ShowIndex < 0)
-		ShowIndex += DisplayList.size();
+		ShowIndex += DisplayList->size();
 
-	while (ShowIndex >= (int)DisplayList.size())
-		ShowIndex -= DisplayList.size();
+	while (ShowIndex >= (int)DisplayList->size())
+		ShowIndex -= DisplayList->size();
 
 	if (ShowingList == true)
 		SetFileList();
 	else
 		ShowAbsoluteImage(ShowIndex, 1);
+
 }
 
 //-----------------------------------------------------------------------------------------------------
@@ -5875,13 +5843,13 @@ void CMainForm::MnShowInformation_Click(void)
 	else
 	{
 		double P = (double)WWidth / Susie.OrgWidth * 100.0;
-		Mes = acfc::GetMiniPathName(DisplayList[ShowIndex].FileName, 1) + TEXT("\n");
+		Mes = acfc::GetMiniPathName((*DisplayList)[ShowIndex].FileName, 1) + TEXT("\n");
 
 		if (InArchive) Mes += FileList[ShowIndexBack].FileName + TEXT("\n");
 
 		Mes += TEXT("\n") + std::to_wstring(Susie.OrgWidth) + TEXT(" px x ") + std::to_wstring(Susie.OrgHeight) + TEXT(" px\n")
 			+ acfc::FormatString(P, 1, false) + TEXT(" %\n\n")
-			+ acfc::GetMetricPrefixString(DisplayList[ShowIndex].FileSize, 3, TEXT("")) + TEXT("bytes (") + std::to_wstring(DisplayList[ShowIndex].FileSize) + TEXT(")bytes\n")
+			+ acfc::GetMetricPrefixString((*DisplayList)[ShowIndex].FileSize, 3, TEXT("")) + TEXT("bytes (") + std::to_wstring((*DisplayList)[ShowIndex].FileSize) + TEXT(" bytes)\n")
 			+ TEXT("\nLoader : ") + Susie.PluginName;
 
 		if (Susie.GIFAnimate == true)
@@ -6062,7 +6030,7 @@ void CMainForm::MnJpegSave_Click(void)
 	if (Susie.Showing == false) return;
 
 	NoStayOnTop();
-	std::wstring Dest = DisplayList[ShowIndex].FileName;
+	std::wstring Dest = (*DisplayList)[ShowIndex].FileName;
 
 	SaveJpegDialog.InitialDirectory = acfc::GetFolderName(Dest);
 
@@ -6085,7 +6053,7 @@ void CMainForm::MnJpegSaveShowingSize_Click(void)
 	if (Susie.Showing == false) return;
 
 	NoStayOnTop();
-	std::wstring Dest = DisplayList[ShowIndex].FileName;
+	std::wstring Dest = (*DisplayList)[ShowIndex].FileName;
 
 	SaveJpegDialog.InitialDirectory = acfc::GetFolderName(Dest);
 
@@ -6123,7 +6091,7 @@ void CMainForm::MnSavePNG_Click(void)
 	if (Susie.Showing == false) return;
 
 	NoStayOnTop();
-	std::wstring Dest = DisplayList[ShowIndex].FileName;
+	std::wstring Dest = (*DisplayList)[ShowIndex].FileName;
 
 	SavePNGDialog.InitialDirectory = acfc::GetFolderName(Dest);
 
@@ -6575,6 +6543,7 @@ void CMainForm::TrayIcon_MouseClick(EEventButton button)
 	switch (button)
 	{
 	case EEventButton_LEFT:
+		if(Visible == false)MnToggleVisible_Click();
 		acfc::SetAbsoluteForegroundWindow(hWindow);
 		break;
 	case EEventButton_RIGHT:

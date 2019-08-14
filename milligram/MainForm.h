@@ -142,8 +142,7 @@ private:
 	//---------------------------------------------------------
 
 	std::vector<CImageInfo> FileList;
-	std::vector<CImageInfo> ArchiveFileList;
-	std::vector<CImageInfo> DisplayList;
+	std::vector<CImageInfo> *DisplayList;
 	std::vector<std::wstring> SpiPathes;
 
 	std::wstring IniParamName = TEXT("milligram");
@@ -207,6 +206,7 @@ private:
 	int ShowIndexBack = -1;         // 表示中の画像の番号(サブ)
 	bool AlwaysTop = false;           // 常に手前に表示
 	bool ShowingList = false;         // ファイルリスト表示中かどうか
+	bool PreShowingList = false;         // 前回終了時にファイルリスト表示中かどうか
 	bool SlideShow = false;           // スライドショーモード
 	int SSInterval = 5000;           // スライドショーのインターバル
 	UINT SSId = 1;					// タイマーの ID
@@ -390,7 +390,7 @@ public:
 	std::wstring CreateFileList(void);
 
 	bool SaveFileList(std::wstring FileName); // ファイルリストを保存する
-	bool LoadFileList(std::vector<CImageInfo>& DestSL, std::vector<CImageInfo>& ArcLists, std::map<std::wstring, std::wstring>& Map);
+	bool LoadFileList(std::vector<CImageInfo>& DestSL, std::map<std::wstring, std::wstring>& Map);
 	
 	// ヒストリーメニュー操作
 
@@ -427,7 +427,7 @@ public:
 	// 便利関数
 
 	std::wstring GetTabString(std::wstring Src, std::wstring Name);
-	int IndexOfImageInfos(std::vector<CImageInfo>& Src, std::wstring FileName);
+	int IndexOfImageInfos(std::vector<CImageInfo>* Src, std::wstring FileName);
 
 	std::wstring LoadStringResource(UINT uID); // リソースから文字列読み込み
 	LPWSTR LoadStringBuffer(UINT uID); // メモリ文字列を確保してリソースから読み込み
@@ -554,16 +554,14 @@ public:
 	
 	bool OpenFiles(std::vector<std::wstring> &SrcLists);
 	bool OpenFiles(std::vector<std::wstring> &SrcLists, std::wstring SelectedFile, int Offset, bool AddMode);
-	bool CheckGetLists(std::vector<CImageInfo>& DestLists, std::vector<CImageInfo>& ArcLists, std::vector<std::wstring>& DropLists);
+	bool CheckGetLists(std::vector<CImageInfo>& DestLists, std::vector<std::wstring>& DropLists);
 	bool GetImageLists(std::wstring Src, std::vector<CImageInfo>& Dest, bool SubFolder, bool EnableFileMask, std::wstring FileMaskString);
-	bool AddFileList(std::vector<CImageInfo>& SrcLists, std::vector<CImageInfo>& ArcLists, int Mode);
+	bool AddFileList(std::vector<CImageInfo>& SrcLists, int Mode);
 	bool DeleteFileList(int DeleteMode);
 	
 	// ファイルリスト操作
 	
 	bool DeleteFileInList(int i);
-	bool DeleteArchiveData(std::wstring ArcFileName);
-
 	bool MoveSelectedList(int Offset);
 	bool SortFileList(ESortType Type);
 
@@ -627,7 +625,7 @@ public:
 	void MnLock_Click(void);
 	void MnOpenFile_Click(void);
 	void MnOpenFolder_Click(void);
-	void MnOpenFolderExistingShowingFile_Click(void);
+	void MnLoadFolderExistingShowingFile_Click(void);
 	void MnCloseArchive_Click(void);
 	void MnToggleShow_Click(void);
 	void MnShowInformation_Click(void);

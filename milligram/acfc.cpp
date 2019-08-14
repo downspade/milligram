@@ -325,7 +325,7 @@ namespace acfc
 		lstrcpy(strMem, src.c_str());
 		GlobalUnlock(hg);
 
-		SetClipboardData(CF_TEXT, hg);
+		SetClipboardData(CF_UNICODETEXT, hg);
 
 		CloseClipboard();
 		return(true);
@@ -1001,7 +1001,7 @@ namespace acfc
 	size_t SaveBinaryFile(std::wstring &FileName, BYTE *Src, size_t size)
 	{
 		HANDLE hFile;
-		hFile = CreateFile(FileName.c_str(), GENERIC_WRITE, 0, nullptr, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+		hFile = CreateFile(FileName.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
 
 		if (hFile == nullptr)return(0);
 		DWORD rsize;
@@ -1269,6 +1269,7 @@ namespace acfc
 		std::wstring s = LowerCase(Trim(src));
 
 		if (s == TEXT("true"))return(true);
+		if (s == TEXT("false"))return(false);
 		return(Default);
 	}
 
@@ -1996,8 +1997,8 @@ namespace acfc
 	{
 		int num = SendMessage(handle, LB_GETCOUNT, 0, 0);
 		if (i < 0 || i >= num)return(false);
-		if (SendMessage(handle, LB_GETTEXT, i, 0) != 0)return(true);
-		return(false);
+		Items[i].Selected = SendMessage(handle, LB_GETSEL, i, 0);
+		return(Items[i].Selected);
 	}
 
 	void CListBox::SetSelected(int i, bool sel)
