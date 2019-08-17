@@ -70,19 +70,44 @@ namespace milligram
 		WORD X_Density;     // 画素の水平方向密度
 		WORD Y_Density;     // 画素の垂直方向密度
 		short Color;            // １画素のbit数
+#ifdef _WIN64
+		char  dummy[2]; // アラインメント
+#endif
 		HLOCAL Info;            // 画像のテキストヘッダ
 	};
 
 	struct SArchivedFileInfo
 	{
 		unsigned char Method[8];   // 圧縮法の種類
-		unsigned long Position;    // ファイル上での位置
-		unsigned long CompSize;    // 圧縮されたサイズ
-		unsigned long FileSize;    // 元のファイルサイズ
+		ULONG_PTR Position;    // ファイル上での位置
+		ULONG_PTR CompSize;    // 圧縮されたサイズ
+		ULONG_PTR FileSize;    // 元のファイルサイズ
 		__time32_t Timestamp;          // ファイルの更新日時
 		char Path[200];            // 相対パス
 		char FileName[200];        // ファイルネーム
 		unsigned long CRC;         //CRC
+#ifdef _WIN64
+		// 64bit版の構造体サイズは444bytesですが、実際のサイズは
+		// アラインメントにより448bytesになります。環境によりdummyが必要です。
+		char dummy[4];
+#endif
+	};
+
+	struct SArchivedFileInfoW
+	{
+		unsigned char Method[8];   // 圧縮法の種類
+		ULONG_PTR Position;    // ファイル上での位置
+		ULONG_PTR CompSize;    // 圧縮されたサイズ
+		ULONG_PTR FileSize;    // 元のファイルサイズ
+		__time32_t Timestamp;          // ファイルの更新日時
+		WCHAR Path[200];            // 相対パス
+		WCHAR FileName[200];        // ファイルネーム
+		unsigned long CRC;         //CRC
+#ifdef _WIN64
+	   // 64bit版の構造体サイズは844bytesですが、実際のサイズは
+	   // アラインメントにより848bytesになります。環境によりdummyが必要です。
+		char dummy[4];
+#endif
 	};
 
 
@@ -123,48 +148,76 @@ namespace milligram
 
 		// 関数ポインタ型定義
 		// プラグインの情報を得る
-		typedef int (PASCAL *mGetPluginInfo)(int infono, LPSTR buf, int buflen);
+		typedef int (PASCAL *mGetPluginInfo)(int infono, LPSTR buf, LONG_PTR len);
+		typedef int (PASCAL *mGetPluginInfoW)(int infono, LPWSTR buf, LONG_PTR len);
 
 		//  展開可能なファイル形式か調べる
 		typedef int (PASCAL *mIsSupported)(LPSTR filename, DWORD dw);
+		typedef int (PASCAL *mIsSupportedW)(LPWSTR filename, DWORD dw);
 
 		//  画像ファイルに関する情報を得る　
-		typedef int (PASCAL *mGetPictureInfo)(LPSTR buf, long len, unsigned int flag
+		typedef int (PASCAL *mGetPictureInfo)(LPSTR buf, LONG_PTR len, unsigned int flag
 			, struct SPictureInfo *lpInfo);
+		typedef int (PASCAL *mGetPictureInfoW)(LPWSTR buf, LONG_PTR len, unsigned int flag
+			, struct SPictureInfo *lpInfo);
+
 		//  画像を展開する
-		typedef int (PASCAL *mGetPicture)(LPSTR buf, long len, unsigned int flag
+		typedef int (PASCAL *mGetPicture)(LPSTR buf, LONG_PTR len, unsigned int flag
 			, HANDLE *pHBInfo, HANDLE *pHBm
-			, FARPROC lpPrgressCallback, long lData);
+			, FARPROC lpPrgressCallback, LONG_PTR lData);
+		typedef int (PASCAL *mGetPictureW)(LPWSTR buf, LONG_PTR len, unsigned int flag
+			, HANDLE *pHBInfo, HANDLE *pHBm
+			, FARPROC lpPrgressCallback, LONG_PTR lData);
+
 
 		//  プレビュー・カタログ表示用画像縮小展開ルーティン *
-		typedef int (PASCAL *mGetPreview)(LPSTR buf, long len, unsigned int flag
+		typedef int (PASCAL *mGetPreview)(LPSTR buf, LONG_PTR len, unsigned int flag
 			, HANDLE *pHBInfo, HANDLE *pHBm
-			, FARPROC lpPrgressCallback, long lData);
+			, FARPROC lpPrgressCallback, LONG_PTR lData);
+		typedef int (PASCAL *mGetPreviewW)(LPWSTR buf, LONG_PTR len, unsigned int flag
+			, HANDLE *pHBInfo, HANDLE *pHBm
+			, FARPROC lpPrgressCallback, LONG_PTR lData);
 
 
 		//  アーカイブ内のすべてのファイルの情報を取得する
-		typedef int	(PASCAL *mGetArchiveInfo)(LPSTR buf, long len
+		typedef int	(PASCAL *mGetArchiveInfo)(LPSTR buf, LONG_PTR len
+			, unsigned int flag, HLOCAL *lphInf);
+		//  アーカイブ内のすべてのファイルの情報を取得する
+		typedef int	(PASCAL *mGetArchiveInfoW)(LPWSTR buf, LONG_PTR len
 			, unsigned int flag, HLOCAL *lphInf);
 
+
 		//  アーカイブ内のすべてのファイルの情報を取得する
-		typedef int	(PASCAL *mGetFileInfo)(LPSTR buf, long len
+		typedef int	(PASCAL *mGetFileInfo)(LPSTR buf, LONG_PTR len
+			, unsigned int flag, HLOCAL *lphInf);
+		typedef int	(PASCAL *mGetFileInfoW)(LPWSTR buf, LONG_PTR len
 			, unsigned int flag, HLOCAL *lphInf);
 
 		//  アーカイブ内のファイルを取得する
-		typedef int	(PASCAL *mGetFile)(LPSTR src, long len, LPSTR dest, unsigned int flag
-			, FARPROC prgressCallback, long lData);
+		typedef int	(PASCAL *mGetFile)(LPSTR src, LONG_PTR len, LPSTR dest, unsigned int flag
+			, FARPROC prgressCallback, LONG_PTR lData);
+		typedef int	(PASCAL *mGetFileW)(LPWSTR src, LONG_PTR len, LPSTR dest, unsigned int flag
+			, FARPROC prgressCallback, LONG_PTR lData);
 
 		// Plug-in設定ダイアログの表示
 		typedef int (PASCAL *mConfigurationDlg)(HWND parent, int fnc);
 
 		mGetPluginInfo GetPluginInfo = nullptr;
+		mGetPluginInfoW GetPluginInfoW = nullptr;
 		mIsSupported IsSupported = nullptr;
+		mIsSupportedW IsSupportedW = nullptr;
 		mGetPictureInfo GetPictureInfo = nullptr;
+		mGetPictureInfoW GetPictureInfoW = nullptr;
 		mGetPicture GetPicture = nullptr;
+		mGetPictureW GetPictureW = nullptr;
 		mGetPreview GetPreview = nullptr;
+		mGetPreviewW GetPreviewW = nullptr;
 		mGetArchiveInfo GetArchiveInfo = nullptr;
+		mGetArchiveInfoW GetArchiveInfoW = nullptr;
 		mGetFileInfo GetFileInfo = nullptr;
+		mGetFileInfoW GetFileInfoW = nullptr;
 		mGetFile GetFile = nullptr;
+		mGetFile GetFileW = nullptr;
 		mConfigurationDlg ConfigurationDlg = nullptr;
 
 		// Constructor
@@ -184,16 +237,25 @@ namespace milligram
 			if (SpiHandle != nullptr)
 			{
 				// === Win32 API でアドレス取得 ===
-				GetPluginInfo = (int(PASCAL *)(int infono, LPSTR buf, int buflen))GetProcAddress(SpiHandle, "GetPluginInfo");
+				GetPluginInfo = (int(PASCAL *)(int, LPSTR, LONG_PTR))GetProcAddress(SpiHandle, "GetPluginInfo");
 				IsSupported = (int(PASCAL *)(LPSTR, DWORD))GetProcAddress(SpiHandle, "IsSupported");
-				GetPictureInfo = (int(PASCAL *)(LPSTR, long, unsigned int, struct SPictureInfo *))GetProcAddress(SpiHandle, "GetPictureInfo");
-				GetPicture = (int(PASCAL *)(LPSTR, long, unsigned int, HANDLE *, HANDLE *, FARPROC, long))GetProcAddress(SpiHandle, "GetPicture");
-				GetPreview = (int(PASCAL *)(LPSTR, long, unsigned int, HANDLE *, HANDLE *, FARPROC, long))GetProcAddress(SpiHandle, "GetPreview");
-				GetArchiveInfo = (int(PASCAL *)(LPSTR, long, unsigned int, HLOCAL *))GetProcAddress(SpiHandle, "GetArchiveInfo");
-				GetFileInfo = (int(PASCAL *)(LPSTR, long, unsigned int, HLOCAL *))GetProcAddress(SpiHandle, "GetFileInfo");
-				GetFile = (int(PASCAL *)(LPSTR, long, LPSTR, unsigned int, FARPROC, long))GetProcAddress(SpiHandle, "GetFile");
+				GetPictureInfo = (int(PASCAL *)(LPSTR, LONG_PTR, unsigned int, struct SPictureInfo *))GetProcAddress(SpiHandle, "GetPictureInfo");
+				GetPicture = (int(PASCAL *)(LPSTR, LONG_PTR, unsigned int, HANDLE *, HANDLE *, FARPROC, LONG_PTR))GetProcAddress(SpiHandle, "GetPicture");
+				GetPreview = (int(PASCAL *)(LPSTR, LONG_PTR, unsigned int, HANDLE *, HANDLE *, FARPROC, LONG_PTR))GetProcAddress(SpiHandle, "GetPreview");
+				GetArchiveInfo = (int(PASCAL *)(LPSTR, LONG_PTR, unsigned int, HLOCAL *))GetProcAddress(SpiHandle, "GetArchiveInfo");
+				GetFileInfo = (int(PASCAL *)(LPSTR, LONG_PTR, unsigned int, HLOCAL *))GetProcAddress(SpiHandle, "GetFileInfo");
+				GetFile = (int(PASCAL *)(LPSTR, LONG_PTR, LPSTR, unsigned int, FARPROC, LONG_PTR))GetProcAddress(SpiHandle, "GetFile");
 				ConfigurationDlg = (int(PASCAL *)(HWND, int))GetProcAddress(SpiHandle, "ConfigurationDlg");
-
+#ifdef _WIN64
+				GetPluginInfoW = (int(PASCAL *)(int, LPWSTR, LONG_PTR))GetProcAddress(SpiHandle, "GetPluginInfoW");
+				IsSupportedW = (int(PASCAL *)(LPWSTR, DWORD))GetProcAddress(SpiHandle, "IsSupportedW");
+				GetPictureInfoW = (int(PASCAL *)(LPWSTR, LONG_PTR, unsigned int, struct SPictureInfo *))GetProcAddress(SpiHandle, "GetPictureInfoW");
+				GetPictureW = (int(PASCAL *)(LPWSTR, LONG_PTR, unsigned int, HANDLE *, HANDLE *, FARPROC, LONG_PTR))GetProcAddress(SpiHandle, "GetPictureW");
+				GetPreviewW = (int(PASCAL *)(LPWSTR, LONG_PTR, unsigned int, HANDLE *, HANDLE *, FARPROC, LONG_PTR))GetProcAddress(SpiHandle, "GetPreviewW");
+				GetArchiveInfoW = (int(PASCAL *)(LPWSTR, LONG_PTR, unsigned int, HLOCAL *))GetProcAddress(SpiHandle, "GetArchiveInfoW");
+				GetFileInfoW = (int(PASCAL *)(LPWSTR, LONG_PTR, unsigned int, HLOCAL *))GetProcAddress(SpiHandle, "GetFileInfoW");
+				GetFileW = (int(PASCAL *)(LPSTR, LONG_PTR, LPWSTR, unsigned int, FARPROC, LONG_PTR))GetProcAddress(SpiHandle, "GetFileW");
+#endif
 				GetPluginInfo(0, APIVersion, 5);
 				GetPluginInfo(1, PluginName, 200);
 				

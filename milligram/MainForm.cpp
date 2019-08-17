@@ -6405,7 +6405,7 @@ void CMainForm::MnFileMove_Click(int Index)
 		{
 			Folder = MoveFolder;
 		}
-		if (acfc::FolderExists(Dest) == false)return;
+		if (acfc::FolderExists(Folder) == false)return;
 
 		Dest = Folder + TEXT("\\") + acfc::GetFileName(Src);
 

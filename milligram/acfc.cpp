@@ -402,7 +402,8 @@ namespace acfc
 		acfc::StringSplitToVector(Temp, fileMask, TEXT(";"));
 		for (auto itr = Temp.begin(); itr != Temp.end(); itr++)
 		{
-			if(StrMatch(fileName.c_str(), itr->c_str()) == true)return(true);
+			std::wstring msk = Trim(*itr);
+			if(StrMatch(fileName.c_str(), msk.c_str()) == true)return(true);
 		}
 
 		return (false);

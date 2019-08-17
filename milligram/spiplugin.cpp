@@ -350,6 +350,8 @@ namespace milligram
 		return (true);
 	}
 
+	
+
 	bool CSpiLoader::CheckFileTypeGDIP(CImageInfo &SrcImageInfo, BYTE* FileData)
 	{
 		// 通常のビットマップかどうか調べる
@@ -496,17 +498,6 @@ namespace milligram
 		}
 		else if (strncmp(PostSpi->APIVersion, "00IN", 4) == 0) // TODO:Susie Plugin 動作確認
 		{
-			if (FixRotate == false)
-			{
-				Rotate = SrcImageInfo.Rotate;
-				if (Rotate < 0) Rotate = CheckOrientation(FileData, (int)DataSize);
-			}
-			else
-			{
-				if (Rotate < 0) Rotate = CheckOrientation(FileData, (int)DataSize);
-			}
-			SrcImageInfo.Rotate = Rotate;
-
 			try
 			{
 				//if (PostSpi->GetPictureInfo((LPSTR)FileData, (int)DataSize, 1, &PicInfo) == 0) return (false); 必ず失敗する関数があるらしい
@@ -535,6 +526,17 @@ namespace milligram
 			{
 				return(false);
 			}
+
+			if (FixRotate == false)
+			{
+				Rotate = SrcImageInfo.Rotate;
+				if (Rotate < 0) Rotate = CheckOrientation(FileData, DataSize);
+			}
+			else
+			{
+				if (Rotate < 0) Rotate = CheckOrientation(FileData, DataSize);
+			}
+			SrcImageInfo.Rotate = Rotate;
 
 			Mode = (EPluginMode)(Mode & (EPluginMode_ALL ^ EPluginMode_PICTURE));
 			Mode = (EPluginMode)(Mode | EPluginMode_SPI);
@@ -986,80 +988,81 @@ namespace milligram
 		unsigned int Ofs = 0;
 		unsigned int i;
 
-
-		if (Size < 256) return (0);
-
-		if (pTemp[0] != 0xff || pTemp[1] != 0xd8) return (0);
-		if (pTemp[2] != 0xff) return (0);
-
-		p = (unsigned int)(pTemp[4] * 256 + pTemp[5] + 4);
-
-		if (Size < p) return (0);
-
-		if (pTemp[p] != 0xff) return (0);
-
-		if (pTemp[2] == 0xff && pTemp[3] == 0xe1)
+		while (1)
 		{
-			if (memcmp(pTemp + 6, "Exif\0\0", 6) == 0)
-				Ofs = 12;
-			else
-				return(0);
-		}
-		else
-			return (0);
+			if (Size < 256) return (0);
 
-		//---------------------------------------------
+			if (pTemp[0] != 0xff || pTemp[1] != 0xd8) return (0);
+			if (pTemp[2] != 0xff) return (0);
 
-		for (i = Ofs; i < Size; i++)
-		{
-			//		SInt = *(short *)(void *)(pTemp + i + 2);
-			//		if(pTemp[i] == 0x49 && pTemp[i + 1] == 0x49 && SInt == 0x2a){TMode = 1; break;}
-			//		if(pTemp[i] == 0x4d && pTemp[i + 1] == 0x4d && SInt == 0x2a00){TMode = 2; break;}
-			if (pTemp[i] == 0x49 && pTemp[i + 1] == 0x49) { TMode = 1; break; }
-			if (pTemp[i] == 0x4d && pTemp[i + 1] == 0x4d) { TMode = 2; break; }
-		}
-		if (TMode == 0) goto setorientationlefttop_break;
+			p = (unsigned int)(pTemp[4] * 256 + pTemp[5] + 4);
 
+			if (Size <= p) return (0);
 
+			if (pTemp[p] != 0xff) return (0);
 
-	//---------------------------------------------
-
-		Int = *(int *)(void *)(pTemp + i + 4);
-		Ofs = i;
-
-		acfc::Endian(&Int, 4, TMode);
-		Ofs += Int;
-		if(Size < Ofs)return(0);
-
-	//-------------------------------------------------------------------------------------
-	// Orientation を探す
-	//-------------------------------------------------------------------------------------
-		SInt = *(short int *)(void *)(pTemp + Ofs);
-		Ofs += 2;
-		acfc::Endian(&SInt, 2, TMode);
-		i = SInt;
-
-		while(i > 0)
-		{
-			if(Size < Ofs + 8)return(0);
-			USInt = *(short int *)(void *)(pTemp + Ofs);
-			acfc::Endian(&USInt, 2, TMode);
-
-			switch(USInt)
+			if (pTemp[2] == 0xff && pTemp[3] == 0xe1)
 			{
+				if (memcmp(pTemp + 6, "Exif\0\0", 6) == 0)
+					Ofs = 12;
+				else
+					return(0);
+			}
+			else
+				return (0);
+
+			//---------------------------------------------
+
+			for (i = Ofs; i < Size; i++)
+			{
+				//		SInt = *(short *)(void *)(pTemp + i + 2);
+				//		if(pTemp[i] == 0x49 && pTemp[i + 1] == 0x49 && SInt == 0x2a){TMode = 1; break;}
+				//		if(pTemp[i] == 0x4d && pTemp[i + 1] == 0x4d && SInt == 0x2a00){TMode = 2; break;}
+				if (pTemp[i] == 0x49 && pTemp[i + 1] == 0x49) { TMode = 1; break; }
+				if (pTemp[i] == 0x4d && pTemp[i + 1] == 0x4d) { TMode = 2; break; }
+			}
+			if (TMode == 0) break;
+
+
+
+			//---------------------------------------------
+
+			Int = *(int *)(void *)(pTemp + i + 4);
+			Ofs = i;
+
+			acfc::Endian(&Int, 4, TMode);
+			Ofs += Int;
+			if (Size < Ofs)return(0);
+
+			//-------------------------------------------------------------------------------------
+			// Orientation を探す
+			//-------------------------------------------------------------------------------------
+			SInt = *(short *)(void *)(pTemp + Ofs);
+			Ofs += 2;
+			acfc::Endian(&SInt, 2, TMode);
+			i = SInt;
+
+			while (i > 0)
+			{
+				if (Size <= Ofs + 8)return(0);
+				USInt = *(short *)(void *)(pTemp + Ofs);
+				acfc::Endian(&USInt, 2, TMode);
+
+				switch (USInt)
+				{
 				case 0x0112:
-					Result = *(short int *)(void *)(pTemp + Ofs + 8);
+					Result = *(short *)(void *)(pTemp + Ofs + 8);
 					acfc::Endian(&Result, 2, TMode);
 					return(Result);
 				default:
 					break;
+				}
+
+				Ofs += 12;
+				i--;
 			}
-
-			Ofs += 12;
-			i--;
+			break;
 		}
-
-	setorientationlefttop_break:
 		return(Result);
 	}
 
