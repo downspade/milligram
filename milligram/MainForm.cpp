@@ -144,6 +144,7 @@ CMainForm::CMainForm(void)
 
 CMainForm::~CMainForm(void)
 {
+	DeleteObject(hBGBrush);
 }
 
 void CMainForm::Close(void)
@@ -167,6 +168,8 @@ bool CMainForm::Initialize(HINSTANCE hInstance, int nCmdShow, LPWSTR lpCmdLine)
 	MyRegisterClass(); // フォームを作る準備
 
 	GetDesktopRect(); // デスクトップ矩形の計算
+
+	GetLanguageInfo(); // 使用言語の取得
 
 	LoadResource(); // リソースの読み込み
 
@@ -232,12 +235,16 @@ bool CMainForm::Initialize(HINSTANCE hInstance, int nCmdShow, LPWSTR lpCmdLine)
 	{
 		POINT CurPos;
 		GetCursorPos(&CurPos);
-		Left = CurPos.x - Width / 2;
-		Top = CurPos.y - Height / 2;
-		SetCenter(CurPos.x, CurPos.y);
-		GetMonitorParameter();
 
-		SetWindowPos(hWindow, nullptr, Left, Top, Width, Height, (SWP_NOZORDER | SWP_NOOWNERZORDER));
+		if (KeepPreviousPosition == false)
+		{
+			Left = CurPos.x - Width / 2;
+			Top = CurPos.y - Height / 2;
+			SetCenter(CurPos.x, CurPos.y);
+			GetMonitorParameter();
+
+			SetWindowPos(hWindow, nullptr, Left, Top, Width, Height, (SWP_NOZORDER | SWP_NOOWNERZORDER));
+		}
 	}
 	else
 	{
@@ -375,7 +382,7 @@ bool CMainForm::CreateForm(int nCmdShow)
 
 	if (!hWindow)return (false);
 
-	SetWindowLong(hWindow, GWL_STYLE, WS_POPUP);
+	SetWindowLongPtr(hWindow, GWL_STYLE, WS_POPUP);
 	SetWindowPos(hWindow, NULL, 0, 0, Width, Height, (SWP_NOZORDER | SWP_NOOWNERZORDER | SWP_NOMOVE));
 
 	return (true);
@@ -384,6 +391,7 @@ bool CMainForm::CreateForm(int nCmdShow)
 ATOM CMainForm::MyRegisterClass(void)
 {
 	WNDCLASSEXW wcex;
+	hBGBrush = CreateSolidBrush(FullFillColor.ToCOLORREF());
 
 	wcex.cbSize = sizeof(WNDCLASSEX);
 
@@ -394,7 +402,7 @@ ATOM CMainForm::MyRegisterClass(void)
 	wcex.hInstance = appInstance;
 	wcex.hIcon = LoadIcon(appInstance, MAKEINTRESOURCE(IDI_MILLIGRAM));
 	wcex.hCursor = nullptr;
-	wcex.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
+	wcex.hbrBackground = hBGBrush; // COLOR_WINDOW + 1);
 	wcex.lpszMenuName = nullptr;
 	wcex.lpszClassName = szWindowClass;
 	wcex.hIconSm = LoadIcon(wcex.hInstance, (TEXT("IDI_ICON")));
@@ -405,37 +413,42 @@ ATOM CMainForm::MyRegisterClass(void)
 // Dialog を準備する
 void CMainForm::PrepareDialog(void)
 {
-	OpenFileDialog.Filter = LoadStringResource(IDS_RES_2001);
-	OpenFileDialog.Title = LoadStringResource(IDS_RES_2002);
+	OpenFileDialog.Filter = LoadStringResource(IDS_RES_1901);
+	OpenFileDialog.Title = LoadStringResource(IDS_RES_1902);
 	OpenFileDialog.ofn.Flags |= OFN_ALLOWMULTISELECT;
 
-	OpenPluginDialog.Filter = LoadStringResource(IDS_RES_2003);
-	OpenPluginDialog.Title = LoadStringResource(IDS_RES_2004);
+	OpenPluginDialog.Filter = LoadStringResource(IDS_RES_1903);
+	OpenPluginDialog.Title = LoadStringResource(IDS_RES_1904);
 
-	SavemflDialog.Filter = LoadStringResource(IDS_RES_2005);
-	SavemflDialog.Title = LoadStringResource(IDS_RES_2006);
+	SavemflDialog.Filter = LoadStringResource(IDS_RES_1905);
+	SavemflDialog.Title = LoadStringResource(IDS_RES_1906);
 	SavemflDialog.DefaultExt = TEXT(".mfl");
 
-	SaveLnkDialog.Filter = LoadStringResource(IDS_RES_2007);
-	SaveLnkDialog.Title = LoadStringResource(IDS_RES_2008);
+	SaveLnkDialog.Filter = LoadStringResource(IDS_RES_1907);
+	SaveLnkDialog.Title = LoadStringResource(IDS_RES_1908);
 	SaveLnkDialog.DefaultExt = TEXT(".ini");
 
-	SaveJpegDialog.Filter = LoadStringResource(IDS_RES_2009);
-	SaveJpegDialog.Title = LoadStringResource(IDS_RES_2010);
+	SaveJpegDialog.Filter = LoadStringResource(IDS_RES_1909);
+	SaveJpegDialog.Title = LoadStringResource(IDS_RES_1910);
 	SaveJpegDialog.DefaultExt = TEXT(".lnk");
 
-	SaveIniDialog.Filter = LoadStringResource(IDS_RES_2011);
-	SaveIniDialog.Title = LoadStringResource(IDS_RES_2012);
+	SaveIniDialog.Filter = LoadStringResource(IDS_RES_1911);
+	SaveIniDialog.Title = LoadStringResource(IDS_RES_1912);
 	SaveIniDialog.DefaultExt = TEXT(".jpg");
 
-	SavePNGDialog.Filter = LoadStringResource(IDS_RES_2013);
-	SavePNGDialog.Title = LoadStringResource(IDS_RES_2014);
+	SavePNGDialog.Filter = LoadStringResource(IDS_RES_1913);
+	SavePNGDialog.Title = LoadStringResource(IDS_RES_1914);
 	SavePNGDialog.DefaultExt = TEXT(".png");
 
 	SSTimer.Init(hWindow, 1000);
 	CursorTimer.Init(hWindow, 1000);
 
 	ColorDialog.SetCustomColor(StockColor);
+}
+
+void CMainForm::GetLanguageInfo(void)
+{
+	LangID = GetUserDefaultUILanguage();
 }
 
 // FullFillColor から DrawColor を得る
@@ -470,7 +483,10 @@ Gdiplus::Color CMainForm::GetDrawColor(Gdiplus::Color color)
 // リソースをメモリに読み込む 
 void CMainForm::LoadResource(void)
 {
-	hParentPopupMenu = LoadMenu(appInstance, MAKEINTRESOURCE(IDR_POPUPMENU));
+	if(LangID == MAKELANGID(LANG_JAPANESE, SUBLANG_JAPANESE_JAPAN))
+		hParentPopupMenu = LoadMenu(appInstance, MAKEINTRESOURCE(IDR_POPUPMENU_J));
+	else
+		hParentPopupMenu = LoadMenu(appInstance, MAKEINTRESOURCE(IDR_POPUPMENU));
 	hPopupMenu = GetSubMenu(hParentPopupMenu, 0);
 	hParentMoveMenu = GetSubMenu(hParentPopupMenu, 1);
 
@@ -683,6 +699,8 @@ bool CMainForm::LoadIni(std::wstring IniName, bool CmdLine)
 
 	AutoLoadFileFolder = acfc::GetBoolValue(Map, TEXT("AutoLoadFileFolder"), AutoLoadFileFolder);
 
+	LastMovedFolder = acfc::GetStringValue(Map, TEXT("LastMovedFolder"), LastMovedFolder);
+
 	MaxHistoryNum = acfc::GetIntegerValue(Map, TEXT("MaxHistoryNum"), (int)MaxHistoryNum, 0, 50);
 
 	for (i = 0; i < 16; i++)
@@ -862,6 +880,8 @@ bool CMainForm::SaveIni(std::wstring IniName)
 		sb.append(TEXT("SpiPath") + std::to_wstring(i) + TEXT("=") + SpiPathes[i] + TEXT("\n"));
 
 	sb.append(TEXT("InternalLoader=") + Susie.InternalLoader + TEXT("\n"));
+
+	sb.append(TEXT("LastMovedFolder=") + LastMovedFolder + TEXT("\n"));
 
 	for (i = 0; i < (int)HistoryList.size(); i++)
 		sb.append(TEXT("History") + std::to_wstring(i) + TEXT("=") + HistoryList[i] + TEXT("\n"));
@@ -1096,19 +1116,37 @@ bool CMainForm::ConvertHistoryMenu(void)
 
 		for (i = 0; i < (int)HistoryList.size(); i++)
 		{
-			menuItem.dwTypeData = BufferString((TCHAR *)HistoryList[i].c_str());
+			menuItem.dwTypeData = StringBuffer((TCHAR *)HistoryList[i].c_str());
 			menuItem.wID = wID;
 			InsertMenuItem(hHistoryMenu, Index, TRUE, &menuItem);
 			wID++;
 			Index++;
 		}
 
-		MENUITEMINFO mii = { 0 };
-		mii.cbSize = sizeof(MENUITEMINFO);
-		mii.fMask = MIIM_SUBMENU;
-		GetMenuItemInfo(hPopupMenu, ID_POPUP_HISTORY, FALSE, &mii);
-		mii.hSubMenu = hHistoryMenu;
-		SetMenuItemInfo(hPopupMenu, ID_POPUP_HISTORY, FALSE, &mii); // これで初めて有効になる
+		{
+			MENUITEMINFO sepItem = { 0 };
+			sepItem.cbSize = sizeof(MENUITEMINFO);
+			sepItem.fMask = MIIM_TYPE;
+			sepItem.fType = MFT_SEPARATOR;
+
+			InsertMenuItem(hHistoryMenu, Index, TRUE, &sepItem);
+			Index++;
+		}
+
+		menuItem.dwTypeData = LoadStringBuffer(IDS_MES_1055); // 履歴をクリアメニュー
+		menuItem.wID = wID;
+		InsertMenuItem(hHistoryMenu, Index, TRUE, &menuItem);
+		wID++;
+		Index++;
+
+		{
+			MENUITEMINFO mii = { 0 };
+			mii.cbSize = sizeof(MENUITEMINFO);
+			mii.fMask = MIIM_SUBMENU;
+			GetMenuItemInfo(hPopupMenu, ID_POPUP_HISTORY, FALSE, &mii);
+			mii.hSubMenu = hHistoryMenu;
+			SetMenuItemInfo(hPopupMenu, ID_POPUP_HISTORY, FALSE, &mii); // これで初めて有効になる
+		}
 	}
 	else
 	{
@@ -1687,9 +1725,9 @@ LRESULT CMainForm::ProcessMessages(HWND hWnd, UINT message, WPARAM wParam, LPARA
 }
 
 // キー入力チェック
-void CMainForm::MainForm_KeyDown(WPARAM wParam, LPARAM lParam)
+bool CMainForm::MainForm_KeyDown(WPARAM wParam, LPARAM lParam)
 {
-	if (Locked) return;
+	if (Locked) return(true);
 
 	int SubKey = 0;
 
@@ -1870,6 +1908,7 @@ void CMainForm::MainForm_KeyDown(WPARAM wParam, LPARAM lParam)
 		Close();
 		break;
 	}
+	return(true);
 }
 
 // リストボックスメッセージ処理
@@ -1895,7 +1934,7 @@ LRESULT CMainForm::ProcessMessagesListBox(HWND hWnd, UINT message, WPARAM wParam
 		case WM_SYSKEYDOWN:
 		case WM_KEYDOWN:
 			DisplayBox_KeyDown(wParam, lParam);
-			break;
+			return(0);
 		default:
 			break;
 	}
@@ -1904,15 +1943,14 @@ LRESULT CMainForm::ProcessMessagesListBox(HWND hWnd, UINT message, WPARAM wParam
 }
 
 // キー入力チェック
-void CMainForm::DisplayBox_KeyDown(WPARAM wParam, LPARAM lParam)
+bool CMainForm::DisplayBox_KeyDown(WPARAM wParam, LPARAM lParam)
 {
 	if (ShowingList == false)
 	{
-		MainForm_KeyDown(wParam, lParam);
-		return;
+		return(MainForm_KeyDown(wParam, lParam));
 	}
 
-	if (Locked) return;
+	if (Locked) return(true);;
 
 	int SubKey = 0;
 
@@ -1924,7 +1962,7 @@ void CMainForm::DisplayBox_KeyDown(WPARAM wParam, LPARAM lParam)
 	{
 	case VK_SPACE:
 		if (SubKey == 2)
-			MnToggleShow_Click();
+			MnToggleVisible_Click();
 		break;
 
 	case VK_RETURN:
@@ -2010,9 +2048,7 @@ void CMainForm::DisplayBox_KeyDown(WPARAM wParam, LPARAM lParam)
 
 	case 'I':
 		if (SubKey == 2)
-		{
 			DisplayBox.SelectInvert();
-		}
 		break;
 
 	case 'D':
@@ -2031,6 +2067,7 @@ void CMainForm::DisplayBox_KeyDown(WPARAM wParam, LPARAM lParam)
 		Close();
 		break;
 	}
+	return(true);
 }
 
 // 再描画
@@ -3298,6 +3335,8 @@ std::wstring CMainForm::LoadStringResource(UINT uID)
 	std::wstring result;
 	TCHAR buf[1024]; // TODO:FindResource が失敗するので決め打ちで
 
+	if (LangID == MAKELANGID(LANG_JAPANESE, SUBLANG_JAPANESE_JAPAN))uID += 1000;
+
 	LoadString(appInstance, uID, buf, 1024);
 
 	result = buf;
@@ -3310,16 +3349,19 @@ LPWSTR CMainForm::LoadStringBuffer(UINT uID)
 {
 	TCHAR *result;
 	TCHAR buf[1024];// TODO:FindResource が失敗するので決め打ちで
+
+	if (LangID == MAKELANGID(LANG_JAPANESE, SUBLANG_JAPANESE_JAPAN))uID += 1000;
+
 	LoadString(appInstance, uID, buf, 1024);
 
-	result = BufferString(buf);
+	result = StringBuffer(buf);
 
 	return(result);
 }
 
 
 
-LPWSTR CMainForm::BufferString(TCHAR *src)
+LPWSTR CMainForm::StringBuffer(TCHAR *src)
 {
 	TCHAR *result;
 	std::wstring dat = src;
@@ -3382,7 +3424,7 @@ void CMainForm::SetTaskButtonVisibility(void)
 		if (lStyle & WS_EX_TOOLWINDOW)
 			lStyle ^= WS_EX_TOOLWINDOW;
 	}
-	lStyle = SetWindowLong(hWindow, GWL_EXSTYLE, lStyle);
+	lStyle = SetWindowLongPtr(hWindow, GWL_EXSTYLE, lStyle);
 	SetWindowPos(hWindow, NULL, 0, 0, 0, 0, (SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER));
 }
 
@@ -3484,7 +3526,7 @@ void CMainForm::SetMenuText(HMENU hmenu, UINT ItemID, std::wstring src)
 	MENUITEMINFO menuItem = { 0 };
 	menuItem.cbSize = sizeof(MENUITEMINFO);
 	menuItem.fMask = MIIM_STRING;
-	menuItem.dwTypeData = BufferString((TCHAR *)src.c_str());
+	menuItem.dwTypeData = StringBuffer((TCHAR *)src.c_str());
 
 	SetMenuItemInfo(hmenu, ItemID, FALSE, &menuItem);
 }
@@ -3574,6 +3616,7 @@ void CMainForm::CreateFileMoveMenuFolder(std::wstring FolderName)
 	menuItem.fType = MFT_STRING;
 	UINT wID = ID_FILE_MOVE_BASE;
 	int Index = 0;
+	int sBase = 0;
 
 	MENUITEMINFO sepItem = { 0 };
 	sepItem.cbSize = sizeof(MENUITEMINFO);
@@ -3585,46 +3628,69 @@ void CMainForm::CreateFileMoveMenuFolder(std::wstring FolderName)
 	if (acfc::GetParentFolder(FolderName) != TEXT(""))
 	{
 		MoveData.push_back(TEXT("??"));
-		menuItem.dwTypeData = BufferString((TCHAR *)TEXT("[..](&0)"));
+		menuItem.dwTypeData = StringBuffer((TCHAR *)TEXT("[..](&0)"));
 		menuItem.wID = wID;
 		InsertMenuItem(hMoveMenu, Index, TRUE, &menuItem);
 		wID++;
 		Index++;
-	}
-	acfc::GetFolders(temp, FolderName);
-	for (int i = 0; i < (int)(temp.size()); i++)
-	{
-		std::wstring sc = TEXT("0");
-		sc[0] = (char)(TEXT('0') + i + Index);
-
-		if (sc[0] > TEXT('9')) sc[0] = (TCHAR)(sc[0] - TEXT('9') + TEXT('A'));
-		if (sc[0] > TEXT('Z')) sc[0] = (TCHAR)(sc[0] - TEXT('Z') + TEXT('a'));
-		if (sc[0] > TEXT('z')) sc[0] = (TCHAR)0;
-
-		if (sc[0] != 0)
-		{
-			sc =  TEXT("(&") + sc + TEXT(")");
-		}
-		sc = acfc::GetMiniPathName(temp[i], 1) + sc;
-		MoveData.push_back(temp[i]);
-		menuItem.dwTypeData = BufferString((TCHAR *)sc.c_str());
-		menuItem.wID = wID;
-		InsertMenuItem(hMoveMenu, Index, TRUE, &menuItem);
-		wID++;
-		Index++;
+		sBase++;
 	}
 
 	InsertMenuItem(hMoveMenu, Index, TRUE, &sepItem);
 	Index++;
 
+	if (LastMovedFolder != TEXT("") && acfc::FolderExists(LastMovedFolder))
+	{
+		MoveData.push_back(LastMovedFolder);
+		std::wstring tmp = acfc::GetMiniPathName(LastMovedFolder, 1) + TEXT("(&1)");
+		menuItem.dwTypeData = StringBuffer((TCHAR *)tmp.c_str());
+		menuItem.wID = wID;
+		InsertMenuItem(hMoveMenu, Index, TRUE, &menuItem);
+		wID++;
+		Index++;
+		sBase++;
+
+		InsertMenuItem(hMoveMenu, Index, TRUE, &sepItem);
+		Index++;
+	}
+
+
+	acfc::GetFolders(temp, FolderName);
+	if (temp.size() > 0)
+	{
+		for (int i = 0; i < (int)(temp.size()); i++)
+		{
+			std::wstring sc = TEXT("0");
+			sc[0] = (TEXT('0') + i + sBase);
+
+			if (sc[0] > TEXT('9')) sc[0] = (sc[0] - TEXT('9') + TEXT('A'));
+			if (sc[0] > TEXT('Y')) sc[0] = 0;
+
+			if (sc[0] != 0)
+			{
+				sc = TEXT("(&") + sc + TEXT(")");
+			}
+			sc = acfc::GetMiniPathName(temp[i], 1) + sc;
+			MoveData.push_back(temp[i]);
+			menuItem.dwTypeData = StringBuffer((TCHAR *)sc.c_str());
+			menuItem.wID = wID;
+			InsertMenuItem(hMoveMenu, Index, TRUE, &menuItem);
+			wID++;
+			Index++;
+		}
+
+		InsertMenuItem(hMoveMenu, Index, TRUE, &sepItem);
+		Index++;
+	}
+
 	//-------------------------------------------------------------------------------------------
 
-	std::wstring ThisFolder = acfc::GetFileName(FolderName);
+	std::wstring ThisFolder = acfc::GetMiniPathName(FolderName, 1);
 	if (ThisFolder != TEXT(""))
 	{
 		MoveData.push_back(TEXT("?"));
 		std::wstring tmp = ThisFolder + LoadStringResource(IDS_MES_1036);
-		menuItem.dwTypeData = BufferString((TCHAR *)tmp.c_str());
+		menuItem.dwTypeData = StringBuffer((TCHAR *)tmp.c_str());
 		menuItem.wID = wID;
 		InsertMenuItem(hMoveMenu, Index, TRUE, &menuItem);
 		Index++;
@@ -5192,7 +5258,7 @@ bool CMainForm::JumpBorderArcNml(int Ofs)
 // 現在表示されている画像から Ofs ずらしたインデックスの画像を表示する
 bool CMainForm::ShowOffsetImage(int Ofs)
 {
-	if (AutoLoadFileFolder == true && ShowingList == false && DisplayList->size() == 1 && InArchive == false && SlideShow == false)
+	if (AutoLoadFileFolder == true && ShowingList == false && DisplayList->size() == 1 && InArchive == false)
 	{
 		std::wstring FolderName = acfc::GetFolderName(OpeningFileName);
 		if (FolderName == TEXT("")) return (true);
@@ -5200,7 +5266,10 @@ bool CMainForm::ShowOffsetImage(int Ofs)
 		std::vector<std::wstring> TempSL;
 		std::vector<std::wstring> OpenSL;
 		TempSL.push_back(FolderName);
+		bool ssf = SearchSubFolder; 
+		SearchSubFolder = false;
 		OpenFiles(TempSL, OpeningFileName, Ofs, false);
+		SearchSubFolder = ssf;
 	}
 	else if (ShowingList == false && DisplayList->size() > 0)
 	{
@@ -5792,9 +5861,42 @@ void CMainForm::MnLoadFolderExistingShowingFile_Click(void)
 void CMainForm::MnHisotryMenu_Click(int Index)
 {
 	std::vector<std::wstring> TempSL;
-	TempSL.push_back(HistoryList[Index]);
-	AddHistoryList(TempSL);
-	OpenFiles(TempSL);
+	if (Index < 0)return;
+
+	if (Index < (int)HistoryList.size())
+	{
+		TempSL.push_back(HistoryList[Index]);
+		AddHistoryList(TempSL);
+		OpenFiles(TempSL);
+	}
+	else
+	{
+		NoStayOnTop();
+		int Result;
+		Result = MessageBox(hWindow, LoadStringResource(IDS_MES_1056).c_str(), TEXT("Confirmation"), MB_YESNO | MB_ICONQUESTION);
+
+		RestoreStayOnTop();
+
+		if (Result == IDNO)return;
+
+		HistoryList.clear();
+		LastMovedFolder = TEXT("");
+
+		SetMenuEnabled(hPopupMenu, ID_POPUP_HISTORY, false);
+
+		if (hHistoryMenu != nullptr)
+		{
+			MENUITEMINFO mii = { 0 };
+			mii.cbSize = sizeof(MENUITEMINFO);
+			mii.fMask = MIIM_SUBMENU;
+			GetMenuItemInfo(hPopupMenu, ID_POPUP_HISTORY, FALSE, &mii);
+			mii.hSubMenu = 0;
+			SetMenuItemInfo(hPopupMenu, ID_POPUP_HISTORY, FALSE, &mii);
+
+			DestroyMenu(hHistoryMenu);
+		}
+	}
+
 }
 
 void CMainForm::MnCloseArchive_Click(void)
@@ -5843,7 +5945,7 @@ void CMainForm::MnShowInformation_Click(void)
 	else
 	{
 		double P = (double)WWidth / Susie.OrgWidth * 100.0;
-		Mes = acfc::GetMiniPathName((*DisplayList)[ShowIndex].FileName, 1) + TEXT("\n");
+		Mes = GetImageFileName() + TEXT("\n");
 
 		if (InArchive) Mes += FileList[ShowIndexBack].FileName + TEXT("\n");
 
@@ -6279,7 +6381,13 @@ void CMainForm::MnFileMove_Click(int Index)
 	std::wstring Dest;
 	std::wstring MoveFolder = MoveData[Index];
 
-	if(MoveFolder == TEXT("?"))return;
+	if (acfc::FileExists(Src) == false)return;
+
+	if (MoveFolder == TEXT("?"))
+	{
+		LastMovedFolder = Folder;
+		return;
+	}
 
 	if (MoveFolder == TEXT("*"))
 	{
@@ -6291,40 +6399,44 @@ void CMainForm::MnFileMove_Click(int Index)
 	{
 		if (MoveFolder == TEXT("??"))
 		{
-			Folder = acfc::GetParentFolder(Folder) + TEXT("\\");
+			Folder = acfc::GetParentFolder(Folder);
 		}
 		else
 		{
-			Folder = MoveFolder + TEXT("\\");
+			Folder = MoveFolder;
 		}
+		if (acfc::FolderExists(Dest) == false)return;
 
-		Dest = Folder + acfc::GetFileName(Src);
+		Dest = Folder + TEXT("\\") + acfc::GetFileName(Src);
 
-		if (acfc::FileExists(Dest) == true)
+		if (Src != Dest)
 		{
-			if (
-				((GetAsyncKeyState(VK_LCONTROL) & 0x8000)
-					| (GetAsyncKeyState(VK_RCONTROL) & 0x8000))
-				)
+			if (acfc::FileExists(Dest) == true)
 			{
-				Dest = acfc::GetNonOverwrapFileName(Dest);
-			}
-			else
-			{
-				NoStayOnTop();
-				int Result;
-				Result = MessageBox(hWindow, LoadStringResource(IDS_MES_1039).c_str(), TEXT("Confirmation"), MB_YESNO | MB_ICONQUESTION);
+				if (
+					((GetAsyncKeyState(VK_LCONTROL) & 0x8000)
+						| (GetAsyncKeyState(VK_RCONTROL) & 0x8000))
+					)
+				{
+					Dest = acfc::GetNonOverwrapFileName(Dest);
+				}
+				else
+				{
+					NoStayOnTop();
+					int Result;
+					Result = MessageBox(hWindow, LoadStringResource(IDS_MES_1039).c_str(), TEXT("Confirmation"), MB_YESNO | MB_ICONQUESTION);
 
-				if (Result == IDNO) return;
-				RestoreStayOnTop();
+					RestoreStayOnTop();
+
+					if (Result == IDNO)return;
+				}
 			}
+
+			//  FileChanged.SetCheckFile("");
+			MoveFile(Src.c_str(), Dest.c_str());
+			//  FileChanged.SetCheckFile(Dest);
+			SetImageFileName(Dest);
 		}
-
-		//  FileChanged.SetCheckFile("");
-		MoveFile(Src.c_str(), Dest.c_str());
-		//  FileChanged.SetCheckFile(Dest);
-
-		SetImageFileName(Dest);
 	}
 
 	CreateFileMovePPMenu();

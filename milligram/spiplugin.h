@@ -240,6 +240,7 @@ namespace milligram
 		// ポインタデータ
 		ULONG_PTR GdiplusToken;
 		Bitmap *BitmapGDIP = nullptr;
+		Bitmap **GIFBitmapGDIP = nullptr;
 		Image *ImageGDIP = nullptr;
 
 		HGLOBAL hMemoryGDIP = nullptr;
@@ -253,11 +254,13 @@ namespace milligram
 		int LoopIndex = 0;
 		int FrameCount = 0;
 		int FrameIndex = 0;
-		int *Delay = nullptr;
+		int *Delay = nullptr; // ディレイデータ
 		int DelayTime = 0;
 		int DropFrame = 0;
 		int DropCount = 0;
-		bool GIFLooping = false;
+		bool GIFLooping = false; // GIF アニメループ中かどうか
+		bool GIFAllFrame = false; // 全フレームを取得するかどうか
+		int GIFMaxAllFrame = 100 * 1000 * 1000; // アニメ全体のデータ量がこれを上回るなら毎フレーム取得する
 
 		bool Showing = false; // 表示されているかどうか
 
@@ -351,6 +354,8 @@ namespace milligram
 		bool RestartGIFAnimate(void);
 		// GIF アニメのフレームを次に進める
 		bool GIFAnimateUpDateFrame(bool FrameSkip);
+		// GIF アニメのフレーム画像を得る
+		void GetGIFAnimeData(int aFrameIndex);
 		
 		// 回転情報をチェックする
 		int CheckOrientation(void);

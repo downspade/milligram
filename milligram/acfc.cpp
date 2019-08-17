@@ -647,6 +647,7 @@ namespace acfc
 		{
 			RemoveDirectory(i->c_str());
 		}
+		RemoveDirectory(DelFolder.c_str());
 		return (false);
 	}
 
@@ -1883,7 +1884,7 @@ namespace acfc
 			lp->hInstance, NULL
 		);
 		if(CallProcedure == true)
-			OrgProc = (WNDPROC)SetWindowLong(handle, GWL_WNDPROC, EventProcedure);
+			OrgProc = (WNDPROC)SetWindowLongPtr(handle, GWL_WNDPROC, EventProcedure);
 		Get();
 	}
 
@@ -1891,7 +1892,7 @@ namespace acfc
 	{
 		if (CBaseWindow::SetHWND(hWnd) == false)return(false);
 		OrgProc = (WNDPROC)GetWindowLong(handle, GWL_WNDPROC);
-		SetWindowLong(handle, GWL_WNDPROC, (LONG)CListBoxProc);
+		SetWindowLongPtr(handle, GWL_WNDPROC, (LONG)CListBoxProc);
 		SetProp(handle, TEXT("THIS"), (HANDLE)this);
 		return(true);
 	}
@@ -2162,7 +2163,7 @@ namespace acfc
 	{
 		if (CBaseWindow::SetHWND(hWnd) == false)return(false);
 		OrgProc = (WNDPROC)GetWindowLong(handle, GWL_WNDPROC);
-		SetWindowLong(handle, GWL_WNDPROC, (LONG)CSliderProc);
+		SetWindowLongPtr(handle, GWL_WNDPROC, (LONG)CSliderProc);
 		SetProp(handle, TEXT("THIS"), (HANDLE)this);
 		return(true);
 	}
@@ -2296,7 +2297,7 @@ namespace acfc
 	{
 		if (CBaseWindow::SetHWND(hWnd) == false)return(false);
 		OrgProc = (WNDPROC)GetWindowLong(handle, GWL_WNDPROC);
-		SetWindowLong(handle, GWL_WNDPROC, (LONG)CEdiBoxProc);
+		SetWindowLongPtr(handle, GWL_WNDPROC, (LONG)CEdiBoxProc);
 		SetProp(handle, TEXT("THIS"), (HANDLE)this);
 		return(true);
 	}

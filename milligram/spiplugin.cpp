@@ -452,16 +452,16 @@ namespace milligram
 			try
 			{
 				hMemoryGDIP = GlobalAlloc(GMEM_MOVEABLE, DataSize);
-				pMemoryGDIP = (BYTE *)GlobalLock(hMemoryGDIP); // GIFアニメの時に必要
-				CopyMemory(pMemoryGDIP, FileData, DataSize); // GIFアニメの時に必要
+				pMemoryGDIP = (BYTE *)GlobalLock(hMemoryGDIP);
+				CopyMemory(pMemoryGDIP, FileData, DataSize);
 				StreamGDIP = nullptr;
 				CreateStreamOnHGlobal(hMemoryGDIP, NULL, &StreamGDIP);
 
 				ImageGDIP = new Gdiplus::Image(StreamGDIP);
 
-				GlobalUnlock(hMemoryGDIP);
 				StreamGDIP->Release();
 				StreamGDIP = nullptr;
+				GlobalUnlock(hMemoryGDIP);
 			}
 			catch(...)
 			{
@@ -569,18 +569,20 @@ namespace milligram
 	{
 		Gdiplus::Bitmap *dest = new Gdiplus::Bitmap(Src->GetWidth(), Src->GetHeight());
 
-		HDC hdc = CreateCompatibleDC(nullptr);
 		HBITMAP hdest;
-
 		dest->GetHBITMAP(0, &hdest);
+
+		HDC hdc = CreateCompatibleDC(nullptr);
 		HBITMAP hdc_hdest = (HBITMAP)SelectObject(hdc, hdest);
 
 		Graphics g(dest);
 		g.DrawImage(Src, 0, 0, Src->GetWidth(), Src->GetHeight());
+		g.ReleaseHDC(hdc);
 
 		SelectObject(hdc, hdc_hdest);
-
 		ReleaseDC(nullptr, hdc);
+
+		DeleteDC(hdc);
 		DeleteObject(hdest);
 
 		return(dest);
@@ -897,13 +899,7 @@ namespace milligram
 				{
 					if (DelayTime < 0)DelayTime = 17;
 				}
-				GUID Guid = FrameDimensionTime;
-				ImageGDIP->SelectActiveFrame(&Guid, FrameIndex);
-				DeleteObject(hBitmap);
-				delete BitmapGDIP;
-				BitmapGDIP = CreateBMPFromImage(ImageGDIP);
-
-				BitmapGDIP->GetHBITMAP(0, &hBitmap);
+				GetGIFAnimeData(FrameIndex);
 
 				TransBackBuffer();
 				break;
@@ -914,6 +910,25 @@ namespace milligram
 		}
 
 		return (Result);
+	}
+
+	void CSpiLoader::GetGIFAnimeData(int aFrameIndex)
+	{
+		if (GIFAllFrame)
+		{
+			DeleteObject(hBitmap);
+			GIFBitmapGDIP[FrameIndex]->GetHBITMAP(0, &hBitmap);
+		}
+		else
+		{
+			GUID Guid = FrameDimensionTime;
+			ImageGDIP->SelectActiveFrame(&Guid, FrameIndex);
+			DeleteObject(hBitmap);
+			delete BitmapGDIP;
+			BitmapGDIP = CreateBMPFromImage(ImageGDIP);
+
+			BitmapGDIP->GetHBITMAP(0, &hBitmap);
+		}
 	}
 
 	int CSpiLoader::CheckOrientation(void)
@@ -1048,7 +1063,7 @@ namespace milligram
 		return(Result);
 	}
 
-	bool CSpiLoader::GetGIFAnimeData()
+	bool CSpiLoader::GetGIFAnimeData(void)
 	{
 		UINT count;
 		UINT TotalBuffer;
@@ -1072,7 +1087,6 @@ namespace milligram
 		FrameCount = m_FrameCount;
 		delete[] pDimensionIDs;
 
-
 		// ループ回数を得る
 		TotalBuffer = ImageGDIP->GetPropertyItemSize(PropertyTagLoopCount);
 		pItem = (PropertyItem*)malloc(TotalBuffer);
@@ -1081,7 +1095,6 @@ namespace milligram
 		LoopCount = (int)((short int *)pItem[0].value)[0];
 		free(pItem);
 
-		if (Delay != nullptr)delete[] Delay;
 		Delay = new int[FrameCount];
 
 		// ディレイデータを得る
@@ -1103,8 +1116,28 @@ namespace milligram
 		DelayTime = Delay[0];
 
 		GUID Guid = FrameDimensionTime;
-		ImageGDIP->SelectActiveFrame(&Guid, 0);
 		PreTGT = NowTGT = timeGetTime();
+
+		if (OrgWidth * OrgHeight * 32 * FrameCount < GIFMaxAllFrame)
+			GIFAllFrame = true;
+		else
+			GIFAllFrame = false;
+
+		if (GIFAllFrame == true)
+		{
+			GIFBitmapGDIP = new Bitmap *[FrameCount];
+			for (int i = 0; i < FrameCount; i++)
+			{
+				ImageGDIP->SelectActiveFrame(&Guid, i);
+				GIFBitmapGDIP[i] = CreateBMPFromImage(ImageGDIP);
+			}
+		}
+		else
+		{
+			GUID Guid = FrameDimensionTime;
+			ImageGDIP->SelectActiveFrame(&Guid, 0);
+		}
+
 
 		return (true);
 	}
@@ -1251,6 +1284,15 @@ namespace milligram
 			{
 				delete[] Delay;
 				Delay = nullptr;
+				if (GIFBitmapGDIP != nullptr)
+				{
+					for (int i = 0; i < FrameCount; i++)
+					{
+						delete GIFBitmapGDIP[i];
+					}
+					delete[] GIFBitmapGDIP;
+					GIFBitmapGDIP = nullptr;
+				}
 				GIFAnimate = false;
 			}
 			break;
@@ -1398,6 +1440,7 @@ namespace milligram
 		HBITMAP hBmp = CreateDIBitmap(hdc, &ds.dsBmih, CBM_INIT,
 			ds.dsBm.bmBits, (BITMAPINFO*)&ds.dsBmih, DIB_RGB_COLORS);
 		ReleaseDC(NULL, hdc);
+		DeleteDC(hdc);
 
 		OpenClipboard(windowHandle);
 		EmptyClipboard();

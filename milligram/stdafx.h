@@ -43,6 +43,7 @@
 #include <time.h>
 #include <vector>
 #include <WinUser.h>
+#include <clocale>
 #pragma comment(lib, "Shcore.lib")
 #pragma comment(lib, "Shell32.lib" )
 #pragma comment(lib, "Shlwapi.lib")

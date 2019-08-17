@@ -106,12 +106,14 @@ public:
 	std::vector<std::wstring> CmdLine;
 
 	HWND hWindow = nullptr; // フォームのウィンドウハンドル
+	HBRUSH hBGBrush; // ウィンドウ背景色ブラシ
 	HFONT hFont = nullptr; // 表示ファイルリストのフォントオブジェクト
 	HMENU hParentPopupMenu = nullptr; // すべてのメニュー
 	HMENU hPopupMenu = nullptr; // ポップアップメニューハンドル
 	HMENU hHistoryMenu = nullptr; // ヒストリメニューハンドル
 	HMENU hParentMoveMenu = nullptr; // ヒストリメニューハンドル
 	HMENU hMoveMenu = nullptr; // ファイル移動メニューハンドル
+	LANGID LangID = 0; // 言語ID
 	bool Active = true; // フォームがアクティブかどうか
 	bool MouseCapturing = false; // マウスをキャプチャ中かどうか
 
@@ -153,6 +155,7 @@ private:
 	std::set<std::wstring> StrBuf; // 文字列リソース保管場所
 	std::set<std::wstring> MoveBuf; // File Move PP メニューの文字列バッファ
 	std::vector<std::wstring> MoveData; // FileMove PP の移動対応先フルパス文字列
+	std::wstring LastMovedFolder = TEXT(""); // 最後に移動先に指定されたフォルダ
 
 	//-----------------------------------------------------------------------------
 
@@ -364,7 +367,7 @@ public:
 	ATOM MyRegisterClass(void);
 
 	void PrepareDialog(void); // ダイアログを準備する
-
+	void GetLanguageInfo(void); // 言語情報を取得する
 	void LoadResource(void); // リソースをメモリに読み込む 
 
 	Gdiplus::Color GetDrawColor(Gdiplus::Color color);
@@ -411,9 +414,9 @@ public:
 	// メッセージ処理
 
 	LRESULT ProcessMessages(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam, bool &CallDefault);
-	void MainForm_KeyDown(WPARAM wParam, LPARAM lParam);
+	bool MainForm_KeyDown(WPARAM wParam, LPARAM lParam);
 	LRESULT ProcessMessagesListBox(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam, bool &CallDefault);
-	void DisplayBox_KeyDown(WPARAM wParam, LPARAM lParam);
+	bool DisplayBox_KeyDown(WPARAM wParam, LPARAM lParam);
 	LRESULT SpiProgressCallBack(int nNum, int nDenom, long lData);
 
 	// デスクトップ矩形を得る
@@ -431,7 +434,7 @@ public:
 
 	std::wstring LoadStringResource(UINT uID); // リソースから文字列読み込み
 	LPWSTR LoadStringBuffer(UINT uID); // メモリ文字列を確保してリソースから読み込み
-	LPWSTR BufferString(TCHAR *src); // メモリ文字列を確保する
+	LPWSTR StringBuffer(TCHAR *src); // メモリ文字列を確保する
 
 	// ウィンドウの状態変更
 	
