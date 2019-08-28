@@ -3,7 +3,7 @@
 
 CJpegSettingForm *JpegSettingForm;
 
-BOOL CALLBACK JpegSettingFormWndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
+INT_PTR CALLBACK JpegSettingFormWndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
 	bool CallDefault = false;
 	LRESULT result;
@@ -27,7 +27,7 @@ void CJpegSettingForm::GetData(int * Data)
 	for (int i = 0; i < 4; i++)Data[i] = JCR[i];
 }
 
-int CJpegSettingForm::ShowDialog(HINSTANCE appInstance, HWND hWnd)
+INT_PTR CJpegSettingForm::ShowDialog(HINSTANCE appInstance, HWND hWnd)
 {
 	return (DialogBox(appInstance, TEXT("IDD_JPEGSETTINGFORM"), hWnd, JpegSettingFormWndProc));
 }
@@ -69,8 +69,13 @@ BOOL CJpegSettingForm::ProcessMessages(HWND hWnd, UINT message, WPARAM wParam, L
 		break;
 
 	case WM_CLOSE:
+		Visible = false;
 		EndDialog(hWnd, IDCANCEL);
 		return(TRUE);
+
+	case WM_SHOWWINDOW:
+		Visible = true;
+		break;
 	
 	case WM_HSCROLL:
 		if (SuspendUpdate == false)
@@ -134,7 +139,7 @@ void CJpegSettingForm::ButtonN_Click(int index)
 void CJpegSettingForm::JCREdit_Change(void)
 {
 	std::wstring temp = acfc::GetWindowString(hJCREdit);
-	int CurPos = HIWORD(SendMessage(hJCREdit, EM_GETSEL, 0, 0));
+	size_t CurPos = HIWORD(SendMessage(hJCREdit, EM_GETSEL, 0, 0));
 
 	temp = JCRString.CheckString(temp, CurPos);
 

@@ -9,7 +9,7 @@ class CJpegSettingForm : public acfc::CBaseWindow
 public:
 	void SetData(std::wstring atitile, std::wstring ames, int *Data);
 	void GetData(int *Data);
-	int ShowDialog(HINSTANCE appInstance, HWND hWnd);
+	INT_PTR ShowDialog(HINSTANCE appInstance, HWND hWnd);
 	BOOL ProcessMessages(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam, bool &CallDefault);
 
 private:

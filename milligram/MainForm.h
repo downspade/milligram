@@ -11,17 +11,21 @@
 #define MIV_SMALLESTWINDOWSIZE 200
 #define CULTURESTR "en-US"
 #define MIN_LOOP 50
+#define MIN_WAIT 10
 
 using namespace milligram;
 
 class CMainForm
 {
+
 	enum EEventButton : int
 	{
 		EEventButton_NONE = 0,
 		EEventButton_LEFT = 1,
 		EEventButton_RIGHT = 2,
 		EEventButton_MIDDLE = 4,
+		EEventButton_XBUTTON1 = 8,
+		EEventButton_XBUTTON2 = 16,
 	};
 
 	enum ESortType : int
@@ -42,6 +46,7 @@ class CMainForm
 		ELoadFileResult_FAILEDORNOMASK = 2,
 		ELoadFileResult_NOARCHIVE = 3,
 		ELoadFileResult_RETRYSAMEINDEX = 4,
+		ELoadFileResult_NOFILE = 5,
 	};
 
 	enum EOpenFileResult : int
@@ -50,6 +55,13 @@ class CMainForm
 		EOpenFileResult_LOADFAILED = 1,
 		EOpenFileResult_EXCLUDEBYMASK = 2,
 		EOpenFileResult_NOARCHIVEFILE = 3,
+	};
+
+	enum EShowAbsoluteImageResult : int
+	{
+		EShowAbsoluteImageResult_PASSED = 0,
+		EShowAbsoluteImageResult_OPENARCHIVE = 1,
+		EShowAbsoluteImageResult_NOFILE = 2,
 	};
 
 	enum EFitMode : int
@@ -113,6 +125,8 @@ public:
 	HMENU hHistoryMenu = nullptr; // ヒストリメニューハンドル
 	HMENU hParentMoveMenu = nullptr; // ヒストリメニューハンドル
 	HMENU hMoveMenu = nullptr; // ファイル移動メニューハンドル
+	int MenuShowIndex = 0; // メニュー表示インデックス 0:なし 1:メインメニュー 2:移動メニュー
+	std::wstring MoveSrc = TEXT(""); // ファイルムーブソース
 	LANGID LangID = 0; // 言語ID
 	bool Active = true; // フォームがアクティブかどうか
 	bool MouseCapturing = false; // マウスをキャプチャ中かどうか
@@ -120,7 +134,6 @@ public:
 	acfc::CListBox DisplayBox;
 
 	acfc::COpenFileDialog OpenFileDialog;
-	acfc::COpenFileDialog OpenPluginDialog;
 
 	acfc::CSaveFileDialog SavemflDialog;
 	acfc::CSaveFileDialog SaveIniDialog;
@@ -145,12 +158,14 @@ private:
 
 	std::vector<CImageInfo> FileList;
 	std::vector<CImageInfo> *DisplayList;
-	std::vector<std::wstring> SpiPathes;
+	std::vector<std::wstring> PluginPathes;
 
 	std::wstring IniParamName = TEXT("milligram");
 	std::wstring BalloonTipTitle = TEXT("milligram image viewer");
 	std::wstring IniFolderName = TEXT("");
 	std::wstring ExeFileName = TEXT("");
+	std::wstring TryFileName = TEXT("");// 表示しようとしているファイル名
+	std::wstring TryArchiveName = TEXT(""); // 表示しようとしているアーカイブ名
 
 	std::set<std::wstring> StrBuf; // 文字列リソース保管場所
 	std::set<std::wstring> MoveBuf; // File Move PP メニューの文字列バッファ
@@ -168,25 +183,29 @@ private:
 
 	int DownWidth;            // マウスダウンしたときの幅
 	int DownHeight;           // マウスダウンしたときの高さ
-	int DownLeft;               // マウスダウンしたときの幅
-	int DownTop;                // マウスダウンしたときの高さ
+	int DownLeft;               // マウスダウンしたときの左
+	int DownTop;                // マウスダウンしたときの上
 
-	EEventButton  Holding = EEventButton_NONE;              // マウスホールドしているかどうか 0:してない 1:左 2:右 3:真ん中
+	EEventButton Holding = EEventButton_NONE;              // マウスホールドしているかどうか 0:してない 1:左 2:右 3:真ん中
 	EMousePositionType PositionType = EMousePositionType_NONE;         // マウスダウンしたときのマウスの位置
 	EMousePositionType CursorMode = EMousePositionType_NONE; // 現在のカーソル
+	double PosRatioX = 0.0; // カーソルが画像のどの位置にあるか
+	double PosRatioY = 0.0;
 	//-----------------------------------------------------------------------------
 
 	//-----------------------------------------------------------------------------
-	double Ratio = 1.0;             // 画像の比
+	double WbHRatio = 1.0;             // 画像の比
 	double SizeRatio = 1.0;        // 拡大率
 	EFitMode FitMode = EFitMode_NONE;                            // 1:上下が吸着 2:左右が吸着
 	int WheelPos = 0;             // ホイール値
 	int StartnNum = -1;                    // 初期位置
+	int PreZoomed = false;
 	//-----------------------------------------------------------------------------
 
 	//-----------------------------------------------------------------------------
 	bool NotSaveIni = false;          // Ini ファイルを終了時に保存するかどうか
 	bool InstanceMode = false;        // インスタンスモードで動作中かどうか
+	bool UninstallMode = false;		// アンインストールモードとして起動されたかどうか
 	//-----------------------------------------------------------------------------
 
 	//-----------------------------------------------------------------------------
@@ -198,15 +217,18 @@ private:
 	//-----------------------------------------------------------------------------
 
 	//-----------------------------------------------------------------------------
-	bool ReloadMode = false;            // 復元起動時に大きさ位置を保持するために使う
-	bool RClkCancel = false;                    // 右クリックメニューをキャンセルするかどうか
+	bool InitialReloading = false;            // 復元起動時に大きさ位置を保持するために使う
+	bool IgnoreContextMenu = false;                    // 右クリックメニューをキャンセルするかどうか
 	int SSIcon = -1;               // スライドショーアイコンのモード
 	bool SSChangeImage = false;                     // マウスの移動を無視する
 	//-----------------------------------------------------------------------------
 
 	//-----------------------------------------------------------------------------
 	int ShowIndex = -1;            // 表示中の画像の番号
-	int ShowIndexBack = -1;         // 表示中の画像の番号(サブ)
+	int ShowArchive = -1;         // 表示中の画像の番号(サブ)
+	std::wstring ShowFileName = TEXT("");// 表示中のファイル名
+	std::wstring ShowArchiveName = TEXT(""); // 表示中のアーカイブ名
+	std::wstring OpeningFileName = TEXT(""); // 表示中のファイル名（実体）アーカイブファイルならアーカイブファイル名
 	bool AlwaysTop = false;           // 常に手前に表示
 	bool ShowingList = false;         // ファイルリスト表示中かどうか
 	bool PreShowingList = false;         // 前回終了時にファイルリスト表示中かどうか
@@ -218,7 +240,7 @@ private:
 	bool UseWholeScreen = false;      // 画面をすべて使って表示
 	bool FullScreen = false;          // フルスクリーンかどうか
 	bool Locked = false;              // ロック
-	bool SearchSubFolder = false;     // サブフォルダも検索するかどうか
+	bool SearchSubFolder = true;     // サブフォルダも検索するかどうか
 	bool LoadLastFile = false;        // 最後の画像を次回に読み込むかどうか
 	bool HideTaskButton = true;      // タスクボタンを未表示にするかどうか
 	bool FixDiagonalLength = false;              // 一定倍率で表示
@@ -249,7 +271,7 @@ private:
 	bool CreateSendToLink = false;    // SendTo にリンクを作成したかどうか
 	std::wstring FileMaskString = TEXT("*.*");   // ファイルマスク
 	bool EnableFileMask = false;                  // ファイルマスクを有効にするかどうか
-	bool AutoLoadFileFolder = false;                // 単独画像表示時に次のファイルを表示しようとするとフォルダを自動で読み込む
+	bool AutoLoadFileFolder = true;                // 単独画像表示時に次のファイルを表示しようとするとフォルダを自動で読み込む
 	//-----------------------------------------------------------------------------
 
 
@@ -283,12 +305,13 @@ private:
 
 	double ProgressRatio = 0;
 
-	std::wstring OpeningFileName = TEXT("");
-	bool ShowFromShowIndex = false;
+	bool ShowFromShowIndex = false; // ini ファイル読み込みで Index が 0 以外から開始される場合に設定
 
-	bool GIFRefresh = false;
+	bool AnimeRefresh = false;
 	bool EnableDropFrame = true;
-	bool GIFAnimePaused = false;
+	bool AnimePaused = false;
+	bool AnimeTimerPaused = false;
+	int ThreadCount = 0;
 
 	std::vector<std::wstring> HistoryList;
 	int MaxHistoryNum = 16;
@@ -362,6 +385,7 @@ public:
 	// 初期化
 
 	bool Initialize(HINSTANCE hInstance, int nCmdShow, LPWSTR lpCmdLine); // フォームを作る
+	void CheckExistsFileListCorrect(void);
 	bool CreateForm(int nCmdShow); // フォームの初期化など
 
 	ATOM MyRegisterClass(void);
@@ -390,10 +414,11 @@ public:
 
 	bool SaveIni(std::wstring IniName);
 	__time64_t GetCreationTime(std::wstring FileName);
-	std::wstring CreateFileList(void);
 
 	bool SaveFileList(std::wstring FileName); // ファイルリストを保存する
-	bool LoadFileList(std::vector<CImageInfo>& DestSL, std::map<std::wstring, std::wstring>& Map);
+	bool LoadFileList(std::wstring FileName, std::vector<CImageInfo> &DestLists, int &NewIndex, int &NewSubIndex);
+	bool CreateFileList(std::wstring &sb);
+	bool ReadFileList(std::vector<CImageInfo>& DestSL, std::map<std::wstring, std::wstring>& Map);
 	
 	// ヒストリーメニュー操作
 
@@ -401,6 +426,7 @@ public:
 	bool AddHistoryList(std::wstring &FileName);
 	bool AddHistoryList(std::vector<std::wstring> &FileNames);
 	bool ConvertHistoryMenu(void);
+	bool ChangeHistoryName(std::wstring Src, std::wstring Dest);
 
 	
 	// インストール・アンインストール関係
@@ -417,12 +443,12 @@ public:
 	bool MainForm_KeyDown(WPARAM wParam, LPARAM lParam);
 	LRESULT ProcessMessagesListBox(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam, bool &CallDefault);
 	bool DisplayBox_KeyDown(WPARAM wParam, LPARAM lParam);
+	bool ProcessAppCommand(LPARAM cmd, LPARAM uDevicem, LPARAM dwKeys);
 	LRESULT SpiProgressCallBack(int nNum, int nDenom, long lData);
 
 	// デスクトップ矩形を得る
 
 	bool CheckMonitorIni(void); // モードによってスクリーンの状態を得てウィンドウの状態を変更する
-
 	void GetDesktopRect(void); // デスクトップ領域を得る
 	void SetMonitorRect(LPRECT r); // デスクトップ領域を得る関数の補助
 
@@ -441,6 +467,8 @@ public:
 	void SetTaskButtonVisibility(void);
 	void NoStayOnTop(void);
 	void RestoreStayOnTop(void);
+	void PauseAnimeThread(void);
+	void RestartAnimeThread(void);
 
 	std::wstring GetFileVersionString(void); // ファイルのバージョン文字列を取得する
 
@@ -457,8 +485,8 @@ public:
 	// フォームサイズ変更などマウスイベント
 
 	void OnMouseMove(void); // マウスがフォーム上を移動
-	void OnMouseDown(CMainForm::EEventButton button); // マウスダウン
-	void OnMouseUp(CMainForm::EEventButton button); // マウスアップ
+	void OnMouseDown(EEventButton button); // マウスダウン
+	void OnMouseUp(EEventButton button); // マウスアップ
 	void DoMouseUp(void);
 	void MouseLeave(void); // マウスがウィンドウ外に移動
 	void MouseEnter(void); // マウスがウィンドウ内に移動
@@ -469,7 +497,7 @@ public:
 	// フォームのサイズ移動等ウィンドウサイズと位置関係
 
 	bool SyncWindow(void); // 実際のフォームの位置高さを設定する
-	bool CheckRefreshBuckBuffer(void); // フォームのサイズが変わったときにバックバッファの大きさを変更する
+	bool CheckRefreshBackBuffer(void); // フォームのサイズが変わったときにバックバッファの大きさを変更する
 	void GetRealWindowRect(void);
 	bool FixViewOut(void); // サイズ固定モードから出る
 	void RefreshWindowPosition(int X, int Y); // 仮想ウィンドウの位置を更新する
@@ -494,6 +522,10 @@ public:
 	void SetMenuText(HMENU hmenu, UINT ItemID, std::wstring src);
 
 
+	// コンテキストメニューボタンを押した
+
+	void ShowContextMenu(void);
+
 	// ポップアップメニュー表示
 
 	void PopupMenuPopup(POINT &p);
@@ -508,8 +540,9 @@ public:
 	void CheckAlphaValueMenuCheck(void);
 
 
-	// 絶対値で画像を回転する
+	// 画像を回転する
 
+	void SetRotateValueFromSusie(void);
 	void AbsoluteRotate(int Value);
 	void OffsetRotate(int Value);
 	void SetRotateImageSize(void);
@@ -532,7 +565,7 @@ public:
 	bool SetDiagonalLength(void); // 対角線サイズを計算する
 	bool CheckDiagonalLength(double &dWidth, double &dHeight); // 対角線の長さの最小値を保つ
 	bool CheckMinimalDiagonalLength(int &iWidth, int &iHeight); // 最小対角線サイズをキープする
-	void CorrectWindow(void); // 画面の中に少しでも入るように表示を変更する
+	bool CorrectWindow(void); // 画面の中に少しでも入るように表示を変更する
 
 
 	// ウィンドウの位置と大きさを決める
@@ -546,18 +579,17 @@ public:
 	
 
 	bool SetFileList(void);	// ファイルリストを設定する
-	std::wstring GetImageFileName(void); // 表示中のファイル名を取得する
 	std::wstring GetImageFileFolder(void);
-	void SetImageFileNameString(std::wstring src);
-	bool SetImageFileName(std::wstring src);
-	bool ChangeImageFileName(std::wstring newName);
+	void SetImageFileName(void);
+	bool ChangeImageFileName(std::wstring src);
+	bool RenameImageFile(std::wstring newName);
 
 	
 	// ファイルを開く
 	
 	bool OpenFiles(std::vector<std::wstring> &SrcLists);
 	bool OpenFiles(std::vector<std::wstring> &SrcLists, std::wstring SelectedFile, int Offset, bool AddMode);
-	bool CheckGetLists(std::vector<CImageInfo>& DestLists, std::vector<std::wstring>& DropLists);
+	bool CheckGetLists(std::vector<CImageInfo>& DestLists, std::vector<std::wstring>& DropLists, int &NewIdx, int &NewSubIdx);
 	bool GetImageLists(std::wstring Src, std::vector<CImageInfo>& Dest, bool SubFolder, bool EnableFileMask, std::wstring FileMaskString);
 	bool AddFileList(std::vector<CImageInfo>& SrcLists, int Mode);
 	bool DeleteFileList(int DeleteMode);
@@ -569,22 +601,22 @@ public:
 	bool SortFileList(ESortType Type);
 
 	EOpenFileResult OpenFile(CImageInfo & imageInfo);
-	bool OpenArchiveMode(CImageInfo & SrcImageInfo, int SubIndex, int Ofs, bool MustShowImage);
+	bool OpenArchiveMode(CImageInfo & SrcImageInfo, int SubIndex, int Dir, bool MustShowImage);
 	bool CloseArchiveMode(void);
 
 	void ToggleShowList(EShowMode Mode);
 
-	ELoadFileResult LoadFile(int Index, int SubIndex, int Ofs, bool MustShowImage);
+	ELoadFileResult LoadFile(int Index, int SubIndex, int Dir, bool MustShowImage);
 
 	
 	// 表示位置調整
 
-	bool AdjustShowIndex(int Ofs);
-	bool JumpBorderArcNml(int Ofs);
-	bool ShowOffsetImage(int Ofs);
-	int ShowAbsoluteImage(int Index, int Ofs);
-	int ShowAbsoluteImage(int Index, int Ofs, bool MustShowImage);
-	int ShowAbsoluteImage(int Index, int SubIndex, int Ofs, bool MustShowImage);
+	bool AdjustShowIndex(int Dir);
+	bool JumpBorderArcNml(int Dir);
+	bool ShowOffsetImage(int Offset);
+	EShowAbsoluteImageResult ShowAbsoluteImage(int Index, int Dir);
+	EShowAbsoluteImageResult ShowAbsoluteImage(int Index, int Dir, bool MustShowImage);
+	EShowAbsoluteImageResult ShowAbsoluteImage(int Index, int SubIndex, int Dir, bool MustShowImage);
 
 	// スライドショー
 	
@@ -593,9 +625,9 @@ public:
 	
 	// GIF アニメ
 	
-	void GifAnimeTimer(void);
-	void BeginGIFAnimeThread(void);
-	void EndGIFAnimeThread(void);
+	void AnimeThread(void);
+	void BeginAnimeThread(void);
+	void EndAnimeThread(void);
 
 
 	// メニュー操作
@@ -623,7 +655,7 @@ public:
 	void MnFixDiagonalLength_Click(bool SetNewValue);
 	void MnFixRatio_Click(void);
 	void MnSetWindowSize_Click(void);
-	void MnSlideShow_Click(void);
+	void MnSlideShow_Click(int Mode = 2);
 	void MnRefresh_Click(void);
 	void MnLock_Click(void);
 	void MnOpenFile_Click(void);

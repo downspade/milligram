@@ -39,7 +39,7 @@ namespace acfc
 	std::wstring FormatString(double src, int keta, bool Comma);
 
 	// そのウィンドウを絶対的に前に出す(StayTop 除く)
-	void SetAbsoluteForegroundWindow(HWND hWnd);
+	void SetAbsoluteForegroundWindow(HWND hWnd, bool TopMost);
 
 	// 文字列をクリップボードにコピー
 	bool CopyStringToClipboard(std::wstring src);
@@ -66,10 +66,10 @@ namespace acfc
 	std::wstring CorrectNumericString(std::wstring Str);
 
 	// あるフォルダに有るファイル一覧を取得する
-	bool GetFiles(std::vector<std::wstring> &file_names, std::wstring folderPath, std::wstring mask);
+	bool GetFiles(std::vector<std::wstring> &file_names, std::wstring folderPath, std::wstring mask, bool ShortCut = false);
 
 	// あるフォルダに有るフォルダ一覧を取得する
-	bool GetFolders(std::vector<std::wstring> &file_names, std::wstring folderPath);
+	bool GetFolders(std::vector<std::wstring> &file_names, std::wstring folderPath, bool ShortCut = false);
 
 	// あるフォルダ以下に有る全てのファイルとフォルダ一覧を取得する (フォルダをたどる)
 	bool GetFolderFiles(std::vector<std::wstring> &file_names, std::vector<std::wstring> &folder_names, std::wstring folderPath);
@@ -93,7 +93,7 @@ namespace acfc
 	void FilesToClipboard(std::vector<std::wstring> &Src, int Flag); // Flag: DROPEFFECT_COPY, DROPEFFECT_MOVE, DROPEFFECT_LINK
 
 	// ファイルをクリップボードから得る
-	int FilesFromClipboard(std::vector<std::wstring> &Dest);
+	size_t FilesFromClipboard(std::vector<std::wstring> &Dest);
 
 	// エクスプローラーでファイルを表示して選択
 	void SelectFileInExplorer(std::wstring Src);
@@ -152,7 +152,7 @@ namespace acfc
 	std::wstring LoadTextFile(std::wstring &FileName);
 
 	// テキストファイルを書き込む
-	int SaveTextFile(std::wstring &FileName, std::wstring &Data);
+	size_t SaveTextFile(std::wstring &FileName, std::wstring &Data);
 
 	// vector を 区切り記号 Separator で wstring 一つにまとめる
 	bool VectorCombineToString(std::wstring &Dest, std::vector<std::wstring> &Src, std::wstring Separator);
@@ -205,8 +205,8 @@ namespace acfc
 	class COpenFileDialog
 	{
 	public:
-		TCHAR szFile[MAX_PATH * 256] = { 0 };
-		OPENFILENAME ofn = { 0 };
+		TCHAR szFile[MAX_PATH * 256] = {};
+		OPENFILENAME ofn = {};
 		std::wstring InitialDirectory = TEXT("");
 		std::wstring Filter = TEXT("");
 		std::wstring Title = TEXT("");
@@ -223,8 +223,8 @@ namespace acfc
 	class CSaveFileDialog
 	{
 	public:
-		TCHAR szFile[MAX_PATH] = { 0 };
-		OPENFILENAME ofn = { 0 };
+		TCHAR szFile[MAX_PATH] = {};
+		OPENFILENAME ofn = {};
 		std::wstring InitialDirectory = TEXT("");
 		std::wstring Filter = TEXT("");
 		std::wstring DefaultExt = TEXT("");
@@ -240,13 +240,18 @@ namespace acfc
 	// カラー選択ダイアログ
 	class CSelectColorDialog
 	{
-	public:
-		CHOOSECOLOR cs = { 0 };
-		CSelectColorDialog(void);
-		COLORREF ColorRef;
+	private:
+		CHOOSECOLOR cs = {};
+		COLORREF ColorRef = 0;
+		COLORREF CustColors[16] = {};
 		Gdiplus::Color GdipColor;
+	public:
+		CSelectColorDialog(void);
 		bool ShowDialog(HWND hwnd);
-		COLORREF color = 0, CustColors[16] = { 0 };
+		void SetColorGdip(Gdiplus::Color Src);
+		void SetColorRef(COLORREF Src);
+		Gdiplus::Color GetColorGdip(void);
+		COLORREF GetColorRef(void);
 		void SetCustomColor(COLORREF *ColorRef);
 	};
 
@@ -291,7 +296,7 @@ namespace acfc
 		void SetDoubleMode(double SrcValue, bool aMinusEnabled, bool aMinEnabled, bool aMaxEnabled, double aDMin, double aDMax);
 
 		std::wstring CheckString(std::wstring src);
-		std::wstring CheckString(std::wstring src, int &pos);
+		std::wstring CheckString(std::wstring src, size_t &pos);
 
 		int SetIntegerValue(int src);
 		double SetDoubleValue(double src);
@@ -346,7 +351,7 @@ namespace acfc
 		CListBox(void);
 		~CListBox(void);
 
-		void Init(HWND hwnd, LPCREATESTRUCT lp, LONG EventProcedure, bool CallProcedure);
+		void Init(HWND hwnd, LPCREATESTRUCT lp, LONG_PTR EventProcedure, bool CallProcedure);
 		bool SetHWND(HWND hWnd);
 		LRESULT ProcessMessages(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam);
 		void SetText(std::wstring Src, int Index);
@@ -428,19 +433,19 @@ namespace acfc
 
 	//-------------------------------------------------------
 	// Timer
-	static int TimerIndex = 1;
+	static WPARAM TimerIndex = 1;
 	class CTimer
 	{
 	public:
 		CTimer(void);
 		~CTimer(void);
 		void Enabled(bool aEnable);
-		bool IsThis(int i);
+		bool IsThis(WPARAM i);
 		void SetInterval(int aInterval);
 		void Init(HWND hWnd, int aInterval);
 		HWND handle = nullptr;
 	private:
-		int Index;
+		WPARAM Index;
 		bool Started;
 		int Interval;
 	};

@@ -10,7 +10,7 @@ public:
 	CFormSizeForm(void);
 
 	void SetData(std::vector<std::wstring> &Str, int w, int h);
-	int ShowDialog(HINSTANCE appInstance, HWND hWnd);
+	INT_PTR ShowDialog(HINSTANCE appInstance, HWND hWnd);
 	void GetData(int &w, int &h);
 
 	void Init(HWND hWnd);

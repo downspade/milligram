@@ -35,8 +35,7 @@ namespace acfc
 	std::wstring CorrectNumericString(std::wstring src)
 	{
 		std::wstring rStr = L"";
-		int L = src.length();
-		int i;
+		size_t i, L = src.length();
 		for (i = 0; i < L; i++)
 		{
 			if (src[i] >= L'0'
@@ -52,7 +51,8 @@ namespace acfc
 	{
 		std::wstring Result = L"";
 		bool UseMinus, UseFloat;
-		int i, Length, NumberLength;
+		size_t i;
+		size_t Length, NumberLength;
 
 		UseMinus = false;
 		UseFloat = false;
@@ -217,8 +217,8 @@ namespace acfc
 		std::wstring result = TEXT("");
 		std::wstring ustr = TEXT("");
 		std::wstring dstr = TEXT("");
-		int u, d;
-		int k = 0;
+		size_t u, d;
+		size_t k = 0;
 		if (src == 0.0)
 		{
 			result = TEXT("0");
@@ -284,7 +284,7 @@ namespace acfc
 		return(result);
 	}
 
-	void SetAbsoluteForegroundWindow(HWND hWnd)
+	void SetAbsoluteForegroundWindow(HWND hWnd, bool TopMost)
 	{
 		int nTargetID, nForegroundID;
 		DWORD sp_time;
@@ -304,6 +304,11 @@ namespace acfc
 
 		// ウィンドウをフォアグラウンドに持ってくる
 		SetForegroundWindow(hWnd);
+
+		SetWindowPos(hWnd, HWND_TOPMOST, 0, 0, 0, 0, (SWP_NOMOVE | SWP_NOSIZE));
+
+		if (TopMost == false)
+			SetWindowPos(hWnd, HWND_NOTOPMOST, 0, 0, 0, 0, (SWP_NOMOVE | SWP_NOSIZE));
 
 		// 設定を元に戻す
 		SystemParametersInfo(SPI_SETFOREGROUNDLOCKTIMEOUT, 0, &sp_time, 0);
@@ -345,7 +350,11 @@ namespace acfc
 
 	bool GetFileNames(std::vector<std::wstring> &file_names, std::wstring folderPath)
 	{
+#ifdef _WIN64
+		using namespace std::experimental::filesystem;
+#else
 		using namespace std::filesystem;
+#endif
 		directory_iterator itr(folderPath), end;
 		std::error_code err;
 
@@ -364,7 +373,11 @@ namespace acfc
 
 	int GetDropFileName(std::vector<std::wstring> &Dest, HDROP hDrop)
 	{
+#ifdef _WIN64
+		using namespace std::experimental::filesystem;
+#else
 		using namespace std::filesystem;
+#endif
 		std::wstring fileName = TEXT("");
 		int nFiles = DragQueryFile(hDrop, -1, NULL, 0);
 		TCHAR szBuf[MAX_PATH];
@@ -375,7 +388,7 @@ namespace acfc
 			{
 				DragQueryFile(hDrop, i, szBuf, sizeof(szBuf) / sizeof(TCHAR));
 				fileName = szBuf;
-				int Len = fileName.length();
+				size_t Len = fileName.length();
 				if (Len > 5)
 				{
 					if (fileName.substr(Len - 3, 4) == TEXT(".lnk"))
@@ -411,11 +424,13 @@ namespace acfc
 
 
 
-	bool GetFiles(std::vector<std::wstring> &file_names, std::wstring folderPath, std::wstring mask)
+	bool GetFiles(std::vector<std::wstring> &file_names, std::wstring folderPath, std::wstring mask, bool ShortCut)
 	{
 		HANDLE hFind;
 		WIN32_FIND_DATA win32fd;
 		std::wstring search_name = folderPath + L"\\" + mask;
+		std::wstring foundFile = TEXT("");
+		std::wstring foundFileD = TEXT("");
 
 		hFind = FindFirstFile(search_name.c_str(), &win32fd);
 
@@ -430,7 +445,19 @@ namespace acfc
 			if ((win32fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) == 0)
 			{
 				/* ファイルが見つかったらVector配列に保存する */
-				file_names.push_back(folderPath + TEXT("\\") + win32fd.cFileName);
+				if (ShortCut)
+				{
+					foundFile = folderPath + TEXT("\\") + win32fd.cFileName;
+					if (GetFileExt(foundFile) == TEXT(".lnk"))
+					{
+						foundFileD = GetFileFromLink(foundFile);
+						file_names.push_back(foundFileD);
+					}
+				}
+				else
+				{
+					file_names.push_back(folderPath + TEXT("\\") + win32fd.cFileName);
+				}
 			}
 		} while (FindNextFile(hFind, &win32fd));
 
@@ -439,12 +466,13 @@ namespace acfc
 		return(true);
 	}
 
-	bool GetFolders(std::vector<std::wstring> &file_names, std::wstring folderPath)
+	bool GetFolders(std::vector<std::wstring> &file_names, std::wstring folderPath, bool ShortCut)
 	{
 		HANDLE hFind;
 		WIN32_FIND_DATA win32fd;
 		std::wstring search_name = folderPath + L"\\*";
 		std::wstring foundFile = TEXT("");
+		std::wstring foundFileD = TEXT("");
 
 		hFind = FindFirstFile(search_name.c_str(), &win32fd);
 
@@ -465,6 +493,16 @@ namespace acfc
 					file_names.push_back(folderPath + TEXT("\\") + win32fd.cFileName);
 				}
 			}
+			else if (ShortCut)
+			{
+				foundFile = folderPath + TEXT("\\") + win32fd.cFileName;
+				if (GetFileExt(foundFile) == TEXT(".lnk") && FolderExists(foundFileD = GetFileFromLink(foundFile)) == true)
+				{
+					file_names.push_back(foundFileD);
+				}
+
+			}
+
 		} while (FindNextFile(hFind, &win32fd));
 
 		FindClose(hFind);
@@ -601,7 +639,7 @@ namespace acfc
 		wchar_t *SrcBuf;
 		SHFILEOPSTRUCTW sfs;
 		memset(&sfs, 0, sizeof(SHFILEOPSTRUCTW));
-		int L = 0, p = 0;
+		size_t L = 0, p = 0;
 
 		for (auto i = DelFiles.begin(); i != DelFiles.end(); i++)
 			L = L + i->length() + 1;
@@ -663,7 +701,7 @@ namespace acfc
 		dfs.pFiles = sizeof(dfs);
 		dfs.fWide = TRUE;
 
-		int Size = 0, i;
+		size_t Size = 0, i;
 		for (i = 0; i < (int)(Src.size()); i++)
 		{
 			Size += Src[i].length() + 1;
@@ -699,7 +737,7 @@ namespace acfc
 	}
 
 	// ファイルをクリップボードから得る
-	int FilesFromClipboard(std::vector<std::wstring> &Dest)
+	size_t FilesFromClipboard(std::vector<std::wstring> &Dest)
 	{
 		if (IsClipboardFormatAvailable(CF_HDROP))
 		{
@@ -728,7 +766,7 @@ namespace acfc
 		CommandLine += Src;
 
 		// Prepare shell execution params
-		SHELLEXECUTEINFO shExecInfo = { 0 };
+		SHELLEXECUTEINFO shExecInfo = {};
 		shExecInfo.cbSize = sizeof(shExecInfo);
 		shExecInfo.lpFile = TEXT("Explorer.exe");
 		shExecInfo.lpParameters = CommandLine.c_str();
@@ -744,7 +782,7 @@ namespace acfc
 	std::wstring GetNonOverwrapFileName(std::wstring Src)
 	{
 		std::wstring Dest = Src, Name, Path, Ext;
-		int Count = 1;
+		size_t Count = 1;
 
 		// まず最初のファイル名が (1) 形式かどうかチェック
 		Path = GetFolderName(Src);
@@ -753,7 +791,7 @@ namespace acfc
 
 		if (Name[Name.length() - 1] == TEXT(')'))
 		{
-			int i = Name.length() - 2;
+			size_t i = Name.length() - 2;
 			while (i >= 0)
 			{
 				if (Name[i] < TEXT('0') || Name[i] > TEXT('9'))break;
@@ -811,8 +849,8 @@ namespace acfc
 	// ファイル名に使えない文字を得る -1:なし 0~:そのインデックスの文字
 	int CheckFileIrregularChar(std::wstring FileName)
 	{
-		int i;
-		for (i = 0; i <= (int)(FileName.length()); i++)
+		size_t i;
+		for (i = 0; i < (int)(FileName.length()); i++)
 		{
 			if (FileName[i] == TEXT('/')
 				|| FileName[i] == TEXT('\\')
@@ -825,7 +863,7 @@ namespace acfc
 				|| FileName[i] == TEXT('|')
 				)
 			{
-				return(i);
+				return((int)i);
 			}
 		}
 		return(-1);
@@ -917,7 +955,7 @@ namespace acfc
 			size_t q = src.rfind(TEXT('\\'));
 			if (q != std::wstring::npos)
 			{
-				if (src[q - 1] == TEXT(':'))return(TEXT(""));
+				if (q >= src.length() - 1)return(TEXT(""));
 
 				return(src.substr(0, q));
 			}
@@ -928,8 +966,8 @@ namespace acfc
 
 	std::wstring GetMiniPathName(std::wstring src, int Num)
 	{
-		int l = src.length(), p;
-		int q = l - 1;
+		size_t l = src.length(), p;
+		size_t q = l - 1;
 		while (Num >= 0)
 		{
 			p = src.rfind(TEXT('\\'), q);
@@ -994,7 +1032,7 @@ namespace acfc
 		if (hFile == nullptr)return(0);
 		Dest = new BYTE[fsize];
 
-		ReadFile(hFile, Dest, fsize, &rsize, nullptr);
+		ReadFile(hFile, Dest, (DWORD)fsize, &rsize, nullptr);
 
 		CloseHandle(hFile);
 		return(rsize);
@@ -1008,7 +1046,7 @@ namespace acfc
 		if (hFile == nullptr)return(0);
 		DWORD rsize;
 
-		WriteFile(hFile, Src, size, &rsize, 0);
+		WriteFile(hFile, Src, (DWORD)size, &rsize, 0);
 
 		CloseHandle(hFile);
 		return(rsize);
@@ -1047,12 +1085,12 @@ namespace acfc
 		return(res);
 	}
 
-	int SaveTextFile(std::wstring &FileName, std::wstring &Data)
+	size_t SaveTextFile(std::wstring &FileName, std::wstring &Data)
 	{
-		int L = Data.length();
-		int size = L + 1;
+		size_t L = Data.length();
+		size_t size = L + 1;
 		TCHAR *Dest;
-		int i, p = 0;
+		size_t i, p = 0;
 		for (i = 0; i < L; i++)
 		{
 			if (Data[i] == TEXT('\n'))size++;
@@ -1094,7 +1132,7 @@ namespace acfc
 
 	bool StringSplitToVector(std::vector<std::wstring> &Dest, std::wstring &Src, std::wstring Separator)
 	{
-		int s = 0, p = 0, l = Src.length();
+		size_t s = 0, p = 0, l = Src.length();
 		while (s < l)
 		{
 			p = Src.find(Separator, s);
@@ -1148,7 +1186,7 @@ namespace acfc
 	{
 		bool Minus = false;
 
-		int i, l = src.length();
+		size_t i, l = src.length();
 		__int64 c = 0;
 
 		for (i = 0; i < l; i++)
@@ -1304,7 +1342,7 @@ namespace acfc
 	// トリミングする
 	std::wstring Trim(std::wstring a)
 	{
-		int s, e;
+		size_t s, e;
 		std::wstring res;
 
 		for (s = 0; s < (int)(a.length()); s++)
@@ -1352,7 +1390,7 @@ namespace acfc
 		{
 			tmp = tmp + itr->first + TEXT("=") + itr->second + TEXT("\n");
 		}
-		int s = SaveTextFile(FileName, tmp);
+		size_t s = SaveTextFile(FileName, tmp);
 
 		return(s != 0);
 	}
@@ -1450,8 +1488,8 @@ namespace acfc
 
 	bool COpenFileDialog::GetFiles(std::vector<std::wstring>& Dest)
 	{
-		int i = 0;
-		int  j = 0;
+		size_t i = 0;
+		size_t  j = 0;
 		std::wstring filename;
 		std::wstring path;
 		
@@ -1568,9 +1606,34 @@ namespace acfc
 		return(Result);
 	}
 
-	void CSelectColorDialog::SetCustomColor(COLORREF * ColorRef)
+	void CSelectColorDialog::SetColorGdip(Gdiplus::Color Src)
 	{
-		cs.lpCustColors = ColorRef;
+		cs.rgbResult = Src.ToCOLORREF();
+		ColorRef = Src.ToCOLORREF();
+		GdipColor = Src;
+	}
+
+	void CSelectColorDialog::SetColorRef(COLORREF Src)
+	{
+		cs.rgbResult = Src;
+		ColorRef = Src;
+		GdipColor.SetFromCOLORREF(Src);
+	}
+
+	Gdiplus::Color CSelectColorDialog::GetColorGdip(void)
+	{
+		return (GdipColor);
+	}
+
+	COLORREF CSelectColorDialog::GetColorRef(void)
+	{
+		return (ColorRef);
+	}
+
+
+	void CSelectColorDialog::SetCustomColor(COLORREF * pColorRef)
+	{
+		cs.lpCustColors = pColorRef;
 	}
 
 	//-----------------------------------------
@@ -1681,14 +1744,14 @@ namespace acfc
 
 	std::wstring CNumberStr::CheckString(std::wstring src)
 	{
-		int pos;
+		size_t pos = 0;
 		return(CheckString(src, pos));
 	}
 
 
-	std::wstring CNumberStr::CheckString(std::wstring src, int &pos)
+	std::wstring CNumberStr::CheckString(std::wstring src, size_t &pos)
 	{
-		int i = 0;
+		size_t i = 0;
 		bool minus = false;
 		bool dot = false;
 		double dvalue = 0;
@@ -1698,9 +1761,9 @@ namespace acfc
 		if (src.length() == 0 || src == TEXT("-")) return (src);
 
 
-		int orgLen = src.length();
+		size_t orgLen = src.length();
 
-		for (i = 0; i < (int)src.length(); i++)
+		for (i = 0; i < src.length(); i++)
 		{
 			if (DoubleMode)
 			{
@@ -1758,7 +1821,7 @@ namespace acfc
 		}
 		pos = pos + src.length() - orgLen;
 		if (pos < 0)pos = 0;
-		if (pos > (int)src.length())pos = src.length();
+		if (pos > src.length())pos = src.length();
 
 		SValue = src;
 
@@ -1876,7 +1939,7 @@ namespace acfc
 	{
 	}
 
-	void CListBox::Init(HWND hwnd, LPCREATESTRUCT lp, LONG EventProcedure, bool CallProcedure)
+	void CListBox::Init(HWND hwnd, LPCREATESTRUCT lp, LONG_PTR EventProcedure, bool CallProcedure)
 	{
 		handle = CreateWindow(
 			TEXT("LISTBOX"), NULL,
@@ -1885,15 +1948,15 @@ namespace acfc
 			lp->hInstance, NULL
 		);
 		if(CallProcedure == true)
-			OrgProc = (WNDPROC)SetWindowLongPtr(handle, GWL_WNDPROC, EventProcedure);
+			OrgProc = (WNDPROC)SetWindowLongPtr(handle, GWLP_WNDPROC, EventProcedure);
 		Get();
 	}
 
 	bool CListBox::SetHWND(HWND hWnd)
 	{
 		if (CBaseWindow::SetHWND(hWnd) == false)return(false);
-		OrgProc = (WNDPROC)GetWindowLong(handle, GWL_WNDPROC);
-		SetWindowLongPtr(handle, GWL_WNDPROC, (LONG)CListBoxProc);
+		OrgProc = (WNDPROC)GetWindowLongPtr(handle, GWLP_WNDPROC);
+		SetWindowLongPtr(handle, GWLP_WNDPROC, (LONG_PTR)CListBoxProc);
 		SetProp(handle, TEXT("THIS"), (HANDLE)this);
 		return(true);
 	}
@@ -1918,13 +1981,13 @@ namespace acfc
 
 	void CListBox::SetText(std::wstring Src, int Index)
 	{
-		int num = SendMessage(handle, LB_GETCOUNT, 0, 0);
+		LRESULT num = SendMessage(handle, LB_GETCOUNT, 0, 0);
 		if (Index < 0 || Index >= num)return;
 
 		Items[Index].Text = Src;
 		SendMessage(handle, WM_SETREDRAW, FALSE, 0); // 再描画停止
 		bool sel = (SendMessage(handle, LB_GETSEL, Index, 0) != 0);
-		int idx = SendMessage(handle, LB_GETCURSEL, 0, 0);
+		LRESULT idx = SendMessage(handle, LB_GETCURSEL, 0, 0);
 
 		SendMessage(handle, LB_DELETESTRING, Index, (LPARAM)Items[Index].Text.c_str());
 		SendMessage(handle, LB_INSERTSTRING, Index, (LPARAM)Items[Index].Text.c_str());
@@ -1941,7 +2004,7 @@ namespace acfc
 
 	void CListBox::Insert(std::wstring Src, int Index)
 	{
-		int num = SendMessage(handle, LB_GETCOUNT, 0, 0);
+		LRESULT num = SendMessage(handle, LB_GETCOUNT, 0, 0);
 		if (Index < 0)return;
 
 		CItem Item(Src, false);
@@ -1954,7 +2017,7 @@ namespace acfc
 
 	void CListBox::Insert(std::wstring Src, bool Sel, int Index)
 	{
-		int num = SendMessage(handle, LB_GETCOUNT, 0, 0);
+		LRESULT num = SendMessage(handle, LB_GETCOUNT, 0, 0);
 		if (Index < 0)return;
 
 		CItem Item(Src, Sel);
@@ -1968,7 +2031,7 @@ namespace acfc
 
 	void CListBox::Insert(CItem Src, int Index)
 	{
-		int num = SendMessage(handle, LB_GETCOUNT, 0, 0);
+		LRESULT num = SendMessage(handle, LB_GETCOUNT, 0, 0);
 		if (Index < 0)return;
 
 		auto itr = Items.insert(Items.begin() + Index, Src);
@@ -1980,7 +2043,7 @@ namespace acfc
 
 	void CListBox::Delete(int Index)
 	{
-		int num = SendMessage(handle, LB_GETCOUNT, 0, 0);
+		LRESULT num = SendMessage(handle, LB_GETCOUNT, 0, 0);
 		if (Index < 0 || Index >= num)return;
 
 		if (Items[Index].Selected)SelectedCount--;
@@ -1997,7 +2060,7 @@ namespace acfc
 
 	bool CListBox::IsSelected(int i)
 	{
-		int num = SendMessage(handle, LB_GETCOUNT, 0, 0);
+		LRESULT num = SendMessage(handle, LB_GETCOUNT, 0, 0);
 		if (i < 0 || i >= num)return(false);
 		Items[i].Selected = SendMessage(handle, LB_GETSEL, i, 0);
 		return(Items[i].Selected);
@@ -2005,7 +2068,7 @@ namespace acfc
 
 	void CListBox::SetSelected(int i, bool sel)
 	{
-		int num = SendMessage(handle, LB_GETCOUNT, 0, 0);
+		LRESULT num = SendMessage(handle, LB_GETCOUNT, 0, 0);
 		if (i < 0 || i >= num)return;
 		if(sel)
 			SendMessage(handle, LB_SETSEL, TRUE, i);
@@ -2017,7 +2080,7 @@ namespace acfc
 	void CListBox::SelectAll(bool sel)
 	{
 		SendMessage(handle, WM_SETREDRAW, FALSE, 0); // 再描画停止
-		for (int i = 0; i < (int)Items.size(); i++)
+		for (size_t i = 0; i < Items.size(); i++)
 		{
 			Items[i].Selected = true;
 			SendMessage(handle, LB_SETSEL, sel, i);
@@ -2028,7 +2091,7 @@ namespace acfc
 	void CListBox::SelectInvert(void)
 	{
 		SendMessage(handle, WM_SETREDRAW, FALSE, 0); // 再描画停止
-		for (int i = 0; i < (int)Items.size(); i++)
+		for (size_t i = 0; i < Items.size(); i++)
 		{
 			Items[i].Selected = !Items[i].Selected;
 			SendMessage(handle, LB_SETSEL, Items[i].Selected, i);
@@ -2046,7 +2109,7 @@ namespace acfc
 	void CListBox::GetText(void)
 	{
 		TCHAR buf[MAX_PATH];
-		int num = SendMessage(handle, LB_GETCOUNT, 0, 0);
+		LRESULT num = SendMessage(handle, LB_GETCOUNT, 0, 0);
 		Items.clear();
 		std::wstring temp;
 		for (int i = 0; i < num; i++)
@@ -2059,13 +2122,13 @@ namespace acfc
 
 	int CListBox::GetSelectedIndex(void)
 	{
-		SelectedIndex = SendMessage(handle, LB_GETCURSEL, 0, 0);
+		SelectedIndex = (int)SendMessage(handle, LB_GETCURSEL, 0, 0);
 		return(SelectedIndex);
 	}
 
 	void CListBox::GetSelectList(void)
 	{
-		int num = SendMessage(handle, LB_GETCOUNT, 0, 0);
+		LRESULT num = SendMessage(handle, LB_GETCOUNT, 0, 0);
 		if (Items.size() != num)GetText();
 
 		SelectedCount = 0;
@@ -2106,7 +2169,7 @@ namespace acfc
 
 	void CListBox::SetSelectedIndex(void)
 	{
-		SelectedIndex = SendMessage(handle, LB_SETCURSEL, SelectedIndex, 0);
+		SelectedIndex = (int)SendMessage(handle, LB_SETCURSEL, SelectedIndex, 0);
 	}
 
 	void CListBox::SetSelectList(void)
@@ -2163,8 +2226,8 @@ namespace acfc
 	bool CSlider::SetHWND(HWND hWnd)
 	{
 		if (CBaseWindow::SetHWND(hWnd) == false)return(false);
-		OrgProc = (WNDPROC)GetWindowLong(handle, GWL_WNDPROC);
-		SetWindowLongPtr(handle, GWL_WNDPROC, (LONG)CSliderProc);
+		OrgProc = (WNDPROC)GetWindowLongPtr(handle, GWLP_WNDPROC);
+		SetWindowLongPtr(handle, GWLP_WNDPROC, (LONG_PTR)CSliderProc);
 		SetProp(handle, TEXT("THIS"), (HANDLE)this);
 		return(true);
 	}
@@ -2201,11 +2264,11 @@ namespace acfc
 		{
 		case WM_MOUSEMOVE:
 			if (MouseDown)
-				Value = SendMessage(handle, TBM_GETPOS, 0, 0);
+				Value = (int)SendMessage(handle, TBM_GETPOS, 0, 0);
 			break;
 		case WM_LBUTTONUP:
 		case WM_KEYUP:
-			Value = SendMessage(handle, TBM_GETPOS, 0, 0);
+			Value = (int)SendMessage(handle, TBM_GETPOS, 0, 0);
 			MouseDown = false;
 			break;
 		case WM_LBUTTONDOWN:
@@ -2223,7 +2286,6 @@ namespace acfc
 	// CTimer Class
 	//
 	//-----------------------------------------
-	// TODO:メッセージ型ではなくてコールバック関数を呼び出す仕様にしたほうが良い？
 	CTimer::CTimer(void)
 	{
 		Index = TimerIndex;
@@ -2250,7 +2312,7 @@ namespace acfc
 		}
 	}
 
-	bool CTimer::IsThis(int i)
+	bool CTimer::IsThis(WPARAM i)
 	{
 		return (i == Index);
 	}
@@ -2297,8 +2359,8 @@ namespace acfc
 	bool CEditBox::SetHWND(HWND hWnd)
 	{
 		if (CBaseWindow::SetHWND(hWnd) == false)return(false);
-		OrgProc = (WNDPROC)GetWindowLong(handle, GWL_WNDPROC);
-		SetWindowLongPtr(handle, GWL_WNDPROC, (LONG)CEdiBoxProc);
+		OrgProc = (WNDPROC)GetWindowLongPtr(handle, GWLP_WNDPROC);
+		SetWindowLongPtr(handle, GWLP_WNDPROC, (LONG_PTR)CEdiBoxProc);
 		SetProp(handle, TEXT("THIS"), (HANDLE)this);
 		return(true);
 	}

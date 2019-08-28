@@ -14,6 +14,18 @@
 #include <ShellAPI.h>
 #include <mutex>
 
+#ifdef _WIN64
+#include "webp\\x64\\decode.h"
+#include "webp\\x64\\demux.h"
+#pragma comment(lib, "webp\\x64\\libwebp.lib" )
+#pragma comment(lib, "webp\\x64\\libwebpdemux.lib" )
+#else
+#include "webp\\x86\\decode.h"
+#include "webp\\x86\\demux.h"
+#pragma comment(lib, "webp\\x86\\libwebp.lib" )
+#pragma comment(lib, "webp\\x86\\libwebpdemux.lib" )
+#endif
+
 #pragma comment( lib, "Shell32.lib" )
 #pragma comment(lib, "gdiplus.lib")
 using namespace Gdiplus; 
@@ -25,9 +37,10 @@ namespace milligram
 		EPluginMode_NONE = 0,
 		EPluginMode_GDIP = 1,
 		EPluginMode_SPI = 2,
-		EPluginMode_PICTURE = 3,
-		EPluginMode_ARCHIVE = 16,
-		EPluginMode_ACVINNER = 32,
+		EPluginMode_WEBP = 4,
+		EPluginMode_PICTURE = 31,
+		EPluginMode_ARCHIVE = 32,
+		EPluginMode_ACVINNER = 64,
 		EPluginMode_CLEARFILE = 128,
 		EPluginMode_ALL = 255,
 	};
@@ -36,7 +49,7 @@ namespace milligram
 	{
 		EWorkFileType_NONE = 0,
 		EWorkFileType_GDIP_PICTURE = 1,
-		EWorkFileType_GDIP_ARCHIVE = 2,
+		EWorkFileType_WEBP = 2,
 		EWorkFileType_SPI_PICTURE = 3,
 		EWorkFileType_SPI_ARCHIVE = 4,
 	};
@@ -50,6 +63,14 @@ namespace milligram
 		ENoSPIPictureType_PNG = 3,
 		ENoSPIPictureType_GIF = 4,
 		ENoSPIPictureType_TIF = 5,
+		ENoSPIPictureType_WEBP = 6,
+	};
+
+	enum EAnimationType : int
+	{
+		EAnimationType_NONE = 0,
+		EAnimationType_GIF = 1,
+		EAnimationType_WEBP = 2,
 	};
 
 
@@ -117,7 +138,7 @@ namespace milligram
 	public:
 		std::wstring FileName;
 		time_t Timestamp;
-		unsigned int FileSize;
+		size_t FileSize;
 		int Rotate;
 		std::vector<CImageInfo> ImageInfoList;
 
@@ -148,55 +169,55 @@ namespace milligram
 
 		// 関数ポインタ型定義
 		// プラグインの情報を得る
-		typedef int (PASCAL *mGetPluginInfo)(int infono, LPSTR buf, LONG_PTR len);
-		typedef int (PASCAL *mGetPluginInfoW)(int infono, LPWSTR buf, LONG_PTR len);
+		typedef int (PASCAL *mGetPluginInfo)(int infono, LPSTR buf, int buflen);
+		typedef int (PASCAL *mGetPluginInfoW)(int infono, LPCWSTR buf, int buflen);
 
 		//  展開可能なファイル形式か調べる
-		typedef int (PASCAL *mIsSupported)(LPSTR filename, DWORD dw);
-		typedef int (PASCAL *mIsSupportedW)(LPWSTR filename, DWORD dw);
+		typedef int (PASCAL *mIsSupported)(LPCSTR filename, void * dw);
+		typedef int (PASCAL *mIsSupportedW)(LPCWSTR filename, void * dw);
 
 		//  画像ファイルに関する情報を得る　
-		typedef int (PASCAL *mGetPictureInfo)(LPSTR buf, LONG_PTR len, unsigned int flag
+		typedef int (PASCAL *mGetPictureInfo)(LPCSTR buf, LONG_PTR len, unsigned int flag
 			, struct SPictureInfo *lpInfo);
-		typedef int (PASCAL *mGetPictureInfoW)(LPWSTR buf, LONG_PTR len, unsigned int flag
+		typedef int (PASCAL *mGetPictureInfoW)(LPCWSTR buf, LONG_PTR len, unsigned int flag
 			, struct SPictureInfo *lpInfo);
 
 		//  画像を展開する
-		typedef int (PASCAL *mGetPicture)(LPSTR buf, LONG_PTR len, unsigned int flag
+		typedef int (PASCAL *mGetPicture)(LPCSTR buf, LONG_PTR len, unsigned int flag
 			, HANDLE *pHBInfo, HANDLE *pHBm
 			, FARPROC lpPrgressCallback, LONG_PTR lData);
-		typedef int (PASCAL *mGetPictureW)(LPWSTR buf, LONG_PTR len, unsigned int flag
+		typedef int (PASCAL *mGetPictureW)(LPCWSTR buf, LONG_PTR len, unsigned int flag
 			, HANDLE *pHBInfo, HANDLE *pHBm
 			, FARPROC lpPrgressCallback, LONG_PTR lData);
 
 
 		//  プレビュー・カタログ表示用画像縮小展開ルーティン *
-		typedef int (PASCAL *mGetPreview)(LPSTR buf, LONG_PTR len, unsigned int flag
+		typedef int (PASCAL *mGetPreview)(LPCSTR buf, LONG_PTR len, unsigned int flag
 			, HANDLE *pHBInfo, HANDLE *pHBm
 			, FARPROC lpPrgressCallback, LONG_PTR lData);
-		typedef int (PASCAL *mGetPreviewW)(LPWSTR buf, LONG_PTR len, unsigned int flag
+		typedef int (PASCAL *mGetPreviewW)(LPCWSTR buf, LONG_PTR len, unsigned int flag
 			, HANDLE *pHBInfo, HANDLE *pHBm
 			, FARPROC lpPrgressCallback, LONG_PTR lData);
 
 
 		//  アーカイブ内のすべてのファイルの情報を取得する
-		typedef int	(PASCAL *mGetArchiveInfo)(LPSTR buf, LONG_PTR len
+		typedef int	(PASCAL *mGetArchiveInfo)(LPCSTR buf, LONG_PTR len
 			, unsigned int flag, HLOCAL *lphInf);
 		//  アーカイブ内のすべてのファイルの情報を取得する
-		typedef int	(PASCAL *mGetArchiveInfoW)(LPWSTR buf, LONG_PTR len
+		typedef int	(PASCAL *mGetArchiveInfoW)(LPCWSTR buf, LONG_PTR len
 			, unsigned int flag, HLOCAL *lphInf);
 
 
 		//  アーカイブ内のすべてのファイルの情報を取得する
-		typedef int	(PASCAL *mGetFileInfo)(LPSTR buf, LONG_PTR len
+		typedef int	(PASCAL *mGetFileInfo)(LPCSTR buf, LONG_PTR len
 			, unsigned int flag, HLOCAL *lphInf);
-		typedef int	(PASCAL *mGetFileInfoW)(LPWSTR buf, LONG_PTR len
+		typedef int	(PASCAL *mGetFileInfoW)(LPCWSTR buf, LONG_PTR len
 			, unsigned int flag, HLOCAL *lphInf);
 
 		//  アーカイブ内のファイルを取得する
-		typedef int	(PASCAL *mGetFile)(LPSTR src, LONG_PTR len, LPSTR dest, unsigned int flag
+		typedef int	(PASCAL *mGetFile)(LPCSTR src, LONG_PTR len, LPSTR dest, unsigned int flag
 			, FARPROC prgressCallback, LONG_PTR lData);
-		typedef int	(PASCAL *mGetFileW)(LPWSTR src, LONG_PTR len, LPSTR dest, unsigned int flag
+		typedef int	(PASCAL *mGetFileW)(LPCWSTR src, LONG_PTR len, LPWSTR dest, unsigned int flag
 			, FARPROC prgressCallback, LONG_PTR lData);
 
 		// Plug-in設定ダイアログの表示
@@ -217,7 +238,7 @@ namespace milligram
 		mGetFileInfo GetFileInfo = nullptr;
 		mGetFileInfoW GetFileInfoW = nullptr;
 		mGetFile GetFile = nullptr;
-		mGetFile GetFileW = nullptr;
+		mGetFileW GetFileW = nullptr;
 		mConfigurationDlg ConfigurationDlg = nullptr;
 
 		// Constructor
@@ -227,34 +248,34 @@ namespace milligram
 		~CSpiPlugin(void) { if (SpiHandle != nullptr)FreeLibrary(SpiHandle); };					// ライブラリ解放
 
 		//  DLL Procedure address set
-		bool LoadSpiLL(WCHAR *SpiPath)
+		bool LoadSpiLL(WCHAR *PluginPath)
 		{
 			memset(this, 0, sizeof(CSpiPlugin));
 			bool Result = false;
 
-			SpiHandle = LoadLibrary(SpiPath);					// Win32 API
+			SpiHandle = LoadLibrary(PluginPath);					// Win32 API
 
 			if (SpiHandle != nullptr)
 			{
 				// === Win32 API でアドレス取得 ===
-				GetPluginInfo = (int(PASCAL *)(int, LPSTR, LONG_PTR))GetProcAddress(SpiHandle, "GetPluginInfo");
-				IsSupported = (int(PASCAL *)(LPSTR, DWORD))GetProcAddress(SpiHandle, "IsSupported");
-				GetPictureInfo = (int(PASCAL *)(LPSTR, LONG_PTR, unsigned int, struct SPictureInfo *))GetProcAddress(SpiHandle, "GetPictureInfo");
-				GetPicture = (int(PASCAL *)(LPSTR, LONG_PTR, unsigned int, HANDLE *, HANDLE *, FARPROC, LONG_PTR))GetProcAddress(SpiHandle, "GetPicture");
-				GetPreview = (int(PASCAL *)(LPSTR, LONG_PTR, unsigned int, HANDLE *, HANDLE *, FARPROC, LONG_PTR))GetProcAddress(SpiHandle, "GetPreview");
-				GetArchiveInfo = (int(PASCAL *)(LPSTR, LONG_PTR, unsigned int, HLOCAL *))GetProcAddress(SpiHandle, "GetArchiveInfo");
-				GetFileInfo = (int(PASCAL *)(LPSTR, LONG_PTR, unsigned int, HLOCAL *))GetProcAddress(SpiHandle, "GetFileInfo");
-				GetFile = (int(PASCAL *)(LPSTR, LONG_PTR, LPSTR, unsigned int, FARPROC, LONG_PTR))GetProcAddress(SpiHandle, "GetFile");
+				GetPluginInfo = (int(PASCAL *)(int, LPSTR, int))GetProcAddress(SpiHandle, "GetPluginInfo");
+				IsSupported = (int(PASCAL *)(LPCSTR, void *))GetProcAddress(SpiHandle, "IsSupported");
+				GetPictureInfo = (int(PASCAL *)(LPCSTR, LONG_PTR, unsigned int, struct SPictureInfo *))GetProcAddress(SpiHandle, "GetPictureInfo");
+				GetPicture = (int(PASCAL *)(LPCSTR, LONG_PTR, unsigned int, HANDLE *, HANDLE *, FARPROC, LONG_PTR))GetProcAddress(SpiHandle, "GetPicture");
+				GetPreview = (int(PASCAL *)(LPCSTR, LONG_PTR, unsigned int, HANDLE *, HANDLE *, FARPROC, LONG_PTR))GetProcAddress(SpiHandle, "GetPreview");
+				GetArchiveInfo = (int(PASCAL *)(LPCSTR, LONG_PTR, unsigned int, HLOCAL *))GetProcAddress(SpiHandle, "GetArchiveInfo");
+				GetFileInfo = (int(PASCAL *)(LPCSTR, LONG_PTR, unsigned int, HLOCAL *))GetProcAddress(SpiHandle, "GetFileInfo");
+				GetFile = (int(PASCAL *)(LPCSTR, LONG_PTR, LPSTR, unsigned int, FARPROC, LONG_PTR))GetProcAddress(SpiHandle, "GetFile");
 				ConfigurationDlg = (int(PASCAL *)(HWND, int))GetProcAddress(SpiHandle, "ConfigurationDlg");
 #ifdef _WIN64
-				GetPluginInfoW = (int(PASCAL *)(int, LPWSTR, LONG_PTR))GetProcAddress(SpiHandle, "GetPluginInfoW");
-				IsSupportedW = (int(PASCAL *)(LPWSTR, DWORD))GetProcAddress(SpiHandle, "IsSupportedW");
-				GetPictureInfoW = (int(PASCAL *)(LPWSTR, LONG_PTR, unsigned int, struct SPictureInfo *))GetProcAddress(SpiHandle, "GetPictureInfoW");
-				GetPictureW = (int(PASCAL *)(LPWSTR, LONG_PTR, unsigned int, HANDLE *, HANDLE *, FARPROC, LONG_PTR))GetProcAddress(SpiHandle, "GetPictureW");
-				GetPreviewW = (int(PASCAL *)(LPWSTR, LONG_PTR, unsigned int, HANDLE *, HANDLE *, FARPROC, LONG_PTR))GetProcAddress(SpiHandle, "GetPreviewW");
-				GetArchiveInfoW = (int(PASCAL *)(LPWSTR, LONG_PTR, unsigned int, HLOCAL *))GetProcAddress(SpiHandle, "GetArchiveInfoW");
-				GetFileInfoW = (int(PASCAL *)(LPWSTR, LONG_PTR, unsigned int, HLOCAL *))GetProcAddress(SpiHandle, "GetFileInfoW");
-				GetFileW = (int(PASCAL *)(LPSTR, LONG_PTR, LPWSTR, unsigned int, FARPROC, LONG_PTR))GetProcAddress(SpiHandle, "GetFileW");
+				GetPluginInfoW = (int(PASCAL *)(int, LPCWSTR, int))GetProcAddress(SpiHandle, "GetPluginInfoW");
+				IsSupportedW = (int(PASCAL *)(LPCWSTR, void *))GetProcAddress(SpiHandle, "IsSupportedW");
+				GetPictureInfoW = (int(PASCAL *)(LPCWSTR, LONG_PTR, unsigned int, struct SPictureInfo *))GetProcAddress(SpiHandle, "GetPictureInfoW");
+				GetPictureW = (int(PASCAL *)(LPCWSTR, LONG_PTR, unsigned int, HANDLE *, HANDLE *, FARPROC, LONG_PTR))GetProcAddress(SpiHandle, "GetPictureW");
+				GetPreviewW = (int(PASCAL *)(LPCWSTR, LONG_PTR, unsigned int, HANDLE *, HANDLE *, FARPROC, LONG_PTR))GetProcAddress(SpiHandle, "GetPreviewW");
+				GetArchiveInfoW = (int(PASCAL *)(LPCWSTR, LONG_PTR, unsigned int, HLOCAL *))GetProcAddress(SpiHandle, "GetArchiveInfoW");
+				GetFileInfoW = (int(PASCAL *)(LPCWSTR, LONG_PTR, unsigned int, HLOCAL *))GetProcAddress(SpiHandle, "GetFileInfoW");
+				GetFileW = (int(PASCAL *)(LPCWSTR, LONG_PTR, LPWSTR, unsigned int, FARPROC, LONG_PTR))GetProcAddress(SpiHandle, "GetFileW");
 #endif
 				GetPluginInfo(0, APIVersion, 5);
 				GetPluginInfo(1, PluginName, 200);
@@ -267,6 +288,7 @@ namespace milligram
 		CHAR PluginName[200];
 	};
 
+
 	class CSpiLoader
 	{
 	public:
@@ -274,8 +296,11 @@ namespace milligram
 		CImageInfo ImageInfo;          // File name
 		CImageInfo SubImageInfo; // Archive 中のFile Name
 		CImageInfo PostImageInfo;  // 読込中の File name
+#ifdef _WIN64
+		std::wstring PostFileExt = TEXT(""); // Susie に渡す用の FileExt
+#else
 		std::string PostFileExt = ""; // Susie に渡す用の FileExt
-
+#endif
 		//
 		std::vector<CSpiPlugin *> Spi;               // プラグインリスト
 		CSpiPlugin *NowSpi = nullptr;         // 最後に確定したプラグイン
@@ -287,15 +312,22 @@ namespace milligram
 		BITMAPINFO *pBmpInfo = nullptr; // バックバッファのビットマップインフォ
 		HANDLE pBmpData = nullptr; // バックバッファの ビットマップデータ先頭アドレス
 		HANDLE hBmpData = nullptr; // バックバッファのハンドル
+		BITMAPINFO *pBmpRInfo = nullptr; // 回転バックバッファのビットマップインフォ
+		HANDLE pBmpRData = nullptr; // 回転バックバッファの ビットマップデータ先頭アドレス
+		HANDLE hBmpRData = nullptr; // 回転バックバッファのハンドル
+		bool MustBackBufferTrans = false;
 
 
 		// ハンドルデータ
 		HANDLE HFileImage = nullptr, pre_HFileImage = nullptr; // Susie プラグインが持ってくるハンドル
 		BYTE *pFileImage = nullptr, *pre_pFileImage = nullptr; // データへのポインタ
-
+#ifdef _WIN64
+		std::vector<SArchivedFileInfoW> nowArchivedFileInfo;
+		std::vector<SArchivedFileInfoW> oldArchivedFileInfo;
+#else
 		std::vector<SArchivedFileInfo> nowArchivedFileInfo;
 		std::vector<SArchivedFileInfo> oldArchivedFileInfo;
-
+#endif
 		//
 		EWorkFileType LoadingFileType = EWorkFileType_NONE;
 
@@ -309,9 +341,9 @@ namespace milligram
 		IStream *StreamGDIP = nullptr;
 		BYTE *pMemoryGDIP = nullptr;
 
-		// GIF アニメーション関連
-		bool GIFAnimate = false;
-		bool PostGIFAnimate = false;
+		// アニメーション関連
+		EAnimationType Animate = EAnimationType_NONE;
+		EAnimationType PostAnimate = EAnimationType_NONE;
 		int LoopCount = 0;
 		int LoopIndex = 0;
 		int FrameCount = 0;
@@ -320,9 +352,22 @@ namespace milligram
 		int DelayTime = 0;
 		int DropFrame = 0;
 		int DropCount = 0;
-		bool GIFLooping = false; // GIF アニメループ中かどうか
-		bool GIFAllFrame = false; // 全フレームを取得するかどうか
-		int GIFMaxAllFrame = 100 * 1000 * 1000; // アニメ全体のデータ量がこれを上回るなら毎フレーム取得する
+		bool AnimePlaying = false; // GIF アニメループ中かどうか
+		bool AnimeProcessing = false;
+		bool AllFrame = false; // 全フレームを取得するかどうか
+		int MaxAllFrame = 100 * 1000 * 1000; // アニメ全体のデータ量がこれを上回るなら毎フレーム取得する
+
+		// WebP 関係
+		int WebPWidth;
+		int WebPHeight;
+
+		WebPData WebPBufData = {};
+		uint8_t *pWebPBuf = nullptr;
+		uint8_t **pWebPAnimeBuf = nullptr;
+		HBITMAP *hWebPAnimeBitmap = nullptr;
+		WebPAnimDecoder *WebPDecoder = nullptr;
+		WebPAnimDecoderOptions WebPDecOptions;
+		int PreDelay;
 
 		bool Showing = false; // 表示されているかどうか
 
@@ -339,12 +384,12 @@ namespace milligram
 
 		FARPROC ProgressCallback = nullptr;
 		HWND windowHandle = nullptr;
+		CRITICAL_SECTION *CriticalSection;
 
 	public:
 		int ImageNum = 0;
 		int Rotate = -1; // 現在の回転値
 		bool FixRotate = false; // 回転を固定するかどうか
-		bool NoRotationRefresh = false;
 
 		ENoSPIPictureType NOSPIType = ENoSPIPictureType_NONE;
 		ENoSPIPictureType PostNOSPIType = ENoSPIPictureType_NONE;
@@ -375,20 +420,23 @@ namespace milligram
 		void ClearAllPlugins(void);
 
 		// SPi のパスを設定する
-		void SetSpiPathes(std::vector<std::wstring> &Paths);
+		void SetPluginPathes(std::vector<std::wstring> &Paths);
 
 		bool Refresh(void);
 		bool SetImageFile(CImageInfo &SrcImageInfo);
 		void InitSize(int iWidth, int iHeight);
 		bool CheckFileType(CImageInfo &SrcImageInfo, BYTE* FileData, long FileSize);
 		bool CheckFileTypeSPI(CImageInfo &SrcImageInfo, BYTE* FileData);
+		bool CheckWebP(CImageInfo &SrcImageInfo, BYTE* FileData, long FileSize);
 
 		// GIF アニメファイルかどうか調べる
 		bool CheckGIFAnimeEnabled(CImageInfo &SrcImageInfo, BYTE* FileData, long FileSize);
 		// GDI+ でファイルタイプを調べる
 		bool CheckFileTypeGDIP(CImageInfo &SrcImageInfo, BYTE* FileData);
+		// ファイル実体からファイルを読み込む。 Susie Plugin でファイル読み込みしか対応していないものがあるので追加したがバグがあるかもしれない。未使用。
+		bool LoadFromFileEntity(CImageInfo & SrcImageInfo, FARPROC ProgressCallback);
 		// メモリからファイルを読み込む
-		bool LoadFromFileInMemory(CImageInfo &SrcImageInfo, BYTE* FileData, UINT DataSize, FARPROC ProgressCallback);
+		bool LoadFromFileInMemory(CImageInfo &SrcImageInfo, BYTE* FileData, LONG DataSize, FARPROC ProgressCallback);
 
 		// アーカイブファイルの名前を変更する
 		bool ChangeArchiveFileName(std::wstring NewFileName);
@@ -402,6 +450,8 @@ namespace milligram
 		void CheckBackBuffer(int sWidth, int sHeight);
 		// フォームのサイズを指定する
 		bool SetFormSize(int iWidth, int iHeight);
+		bool CreateRotateBuffer(void);
+		bool DeleteRotateBuffer(void);
 		// バックバッファにデータを転送する
 		bool TransBackBuffer(void);
 
@@ -410,15 +460,23 @@ namespace milligram
 		// 相対値で画像を回転する
 		bool OffsetRotate(int Value);
 
-		// GIF アニメーションを一時中断する
-		bool PauseGIFAnimate(void);
-		// GIF アニメーションを再度再生する
-		bool RestartGIFAnimate(void);
-		// GIF アニメのフレームを次に進める
+		// アニメーションを一時中断する
+		bool PauseAnimate(void);
+		// アニメーションを再度再生する
+		bool RestartAnimate(void);
+		// アニメのフレームを次に進める
+		bool AnimateUpDateFrame(bool FrameSkip);
 		bool GIFAnimateUpDateFrame(bool FrameSkip);
-		// GIF アニメのフレーム画像を得る
-		void GetGIFAnimeData(int aFrameIndex);
-		
+		bool WebPAnimateUpDateFrame(bool FrameSkip);
+
+	
+		// WebP のデータを得る
+		void GetWebPData(WebPData *webp_data);
+		// WebP のアニメーションデータを得る
+		void GetWebPAnimationData(WebPData *webp_data);
+		// WebP のExifデータを得る
+		void GetWebPExifData(WebPData *webp_data);
+
 		// 回転情報をチェックする
 		int CheckOrientation(void);
 		// 回転情報をチェックsル
@@ -426,7 +484,7 @@ namespace milligram
 		// 回転情報を Exif からひろう
 		short CheckOrientationExif(BYTE* pTemp, unsigned int Size);
 		// GIF アニメデータをチェックする
-		bool GetGIFAnimeData(void);
+		EAnimationType GetGIFAnimeData(void);
 		
 		// アーカイブファイ中のインデックスの番号のファイルを読み込む
 		bool SetShowSubIndex(CImageInfo &SrcImageInfo, int SubIndex, FARPROC ProgressCallback);
@@ -436,7 +494,7 @@ namespace milligram
 		// アーカイブファイル中の画像を読み込む
 		bool SetSubImageFile(CImageInfo &Src);
 		// アーカイブファイル中の画像を読み込む
-		bool SetSubImageFile(std::vector<CImageInfo>* FileList, int &i, int Ofs);
+		bool SetSubImageFile(std::vector<CImageInfo>* FileList, int &i, int Dir);
 
 		// データをクリアする
 		void Clear(EPluginMode DelMode);
@@ -448,12 +506,16 @@ namespace milligram
 
 		// ビットマップにデータをコピーする
 		Gdiplus::Bitmap* DuplicateImage(int newWidth, int newHeight);
+
+		// ビットマップにデータをコピーする
+		Gdiplus::Bitmap* DuplicateBGImage(int newWidth, int newHeight);
+
 		// クリップボードに画像をコピーする
 		bool CopyImageToClipboard(void);
 		// JPEG ファイルで保存する
-		bool SaveJpeg(std::wstring svFileName, int svWidth, int svHeight, int svCompLevel);
+		bool SaveJpeg(std::wstring svFileName, int svWidth, int svHeight, int svCompLevel, bool TransFormed);
 		// PNG ファイルで保存する
-		bool SavePNG(std::wstring svFileName, int svWidth, int svHeight);
+		bool SavePNG(std::wstring svFileName, int svWidth, int svHeight, bool TransFormed);
 
 
 	};

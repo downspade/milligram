@@ -17,7 +17,7 @@ namespace milligram
 		GdiplusToken = NULL;
 		Gdiplus::GdiplusStartup(&GdiplusToken, &gdiplusStartupInput, NULL);
 
-		InternalLoader = L"*.bmp;*.jpg;*.jpeg;*.png;*.gif;";
+		InternalLoader = L"*.bmp;*.jpg;*.jpeg;*.png;*.gif;*.webp;";
 	}
 
 	CSpiLoader::~CSpiLoader(void)
@@ -67,7 +67,7 @@ namespace milligram
 	}
 
 	// プラグイン一覧を取得し、実際に、プラグインを読み込む
-	void CSpiLoader::SetSpiPathes(std::vector<std::wstring> &Pathes)
+	void CSpiLoader::SetPluginPathes(std::vector<std::wstring> &Pathes)
 	{
 		CSpiPlugin *Plg;
 
@@ -84,8 +84,11 @@ namespace milligram
 		// 全部のパスに入っている spi ファイルを取得
 		for (int i = 0; i != (int)(Pathes.size()); i++)
 		{
-
+#ifdef _WIN64
+			acfc::GetFiles(temp, Pathes[i], L"*.sph");
+#else
 			acfc::GetFiles(temp, Pathes[i], L"*.spi");
+#endif
 			std::copy(temp.begin(), temp.end(), std::back_inserter(SpiFullLists));
 			temp.clear();
 		}
@@ -153,7 +156,7 @@ namespace milligram
 			FILE_SHARE_WRITE, 0, OPEN_EXISTING,
 			FILE_ATTRIBUTE_NORMAL, 0);
 
-		bool Result = 0;
+		bool Result = false;
 
 		if (hFile != NULL && hFile != INVALID_HANDLE_VALUE)
 		{
@@ -174,14 +177,19 @@ namespace milligram
 
 					if (CheckFileType(SrcImageInfo, FileData, SizeL) == 1)
 					{
+						EnterCriticalSection(CriticalSection);
 						// 実際にマップドされたメモリから読み込む
 						Result = LoadFromFileInMemory(SrcImageInfo, FileData, SizeL, ProgressCallback);
+						LeaveCriticalSection(CriticalSection);
 					}
 					// メモリマップドファイルの終了
 					UnmapViewOfFile(FileData);
 				}
 				CloseHandle(hMap);
 			}
+			// NOTE:未使用
+			//if(Result == false)
+			//	Result = LoadFromFileEntity(SrcImageInfo, ProgressCallback);
 		}
 		CloseHandle(hFile);
 
@@ -203,9 +211,13 @@ namespace milligram
 	{
 		bool Result = false;
 		LoadingFileType = EWorkFileType_NONE;
+		PostAnimate = EAnimationType_NONE;
+
 		if (FileData == nullptr) return (false);
 
-		Result = CheckGIFAnimeEnabled(SrcImageInfo, FileData, FileSize);
+		Result = CheckWebP(SrcImageInfo, FileData, FileSize);
+		
+		if(Result == false)Result = CheckGIFAnimeEnabled(SrcImageInfo, FileData, FileSize);
 
 		if (Result == false)
 		{
@@ -229,12 +241,13 @@ namespace milligram
 		// まず SPI プラグインで読み込めるかどうか調べる
 		try 
 		{
-			PostFileExt = acfc::UnicodeToMultiByte(acfc::GetFileExt(SrcImageInfo.FileName));
+#ifdef _WIN64 
+			PostFileExt = acfc::GetFileExt(SrcImageInfo.FileName);
 			int i;
 			// SPI プラグインが必要かどうか調べる。
 			for (i = 0; i < (int)(Spi.size()); i++)
 			{
-				if (Spi[i]->IsSupported((LPSTR)PostFileExt.c_str(), (DWORD)FileData) != 0)
+				if (Spi[i]->IsSupportedW((LPWSTR)PostFileExt.c_str(), FileData) != 0)
 				{
 					PostSpi = Spi[i];
 					PostImageInfo = SrcImageInfo;
@@ -247,6 +260,26 @@ namespace milligram
 					return (true);
 				}
 			}
+#else
+			PostFileExt = acfc::UnicodeToMultiByte(acfc::GetFileExt(SrcImageInfo.FileName));
+			int i;
+			// SPI プラグインが必要かどうか調べる。
+			for (i = 0; i < (int)(Spi.size()); i++)
+			{
+				if (Spi[i]->IsSupported((LPSTR)PostFileExt.c_str(), FileData) != 0)
+				{
+					PostSpi = Spi[i];
+					PostImageInfo = SrcImageInfo;
+
+					if (strncmp(PostSpi->APIVersion, "00IN", 4) == 0)
+						LoadingFileType = EWorkFileType_SPI_PICTURE;
+					else if (strncmp(PostSpi->APIVersion, "00AM", 4) == 0)
+						LoadingFileType = EWorkFileType_SPI_ARCHIVE;
+
+					return (true);
+				}
+			}
+#endif
 		}
 		catch(...)
 		{
@@ -257,10 +290,18 @@ namespace milligram
 		return (false);
 	}
 
+	bool CSpiLoader::CheckWebP(CImageInfo &SrcImageInfo, BYTE* FileData, long FileSize)
+	{
+		bool Result = WebPGetInfo((uint8_t*)FileData, FileSize, &WebPWidth, &WebPHeight);
+		PostNOSPIType = ENoSPIPictureType_WEBP;
+		LoadingFileType = EWorkFileType_WEBP;
+		return(Result);
+	}
+
+
 	bool CSpiLoader::CheckGIFAnimeEnabled(CImageInfo &SrcImageInfo, BYTE* FileData, long FileSize)
 	{
-		PostGIFAnimate = false;
-		if (FileSize < 18)return(true);
+		if (FileSize < 1024)return(false);
 		int i, t, AnimFlag = 0;
 
 		// ヘッダのチェック --------------------
@@ -346,7 +387,7 @@ namespace milligram
 		PostImageInfo = SrcImageInfo;
 		PostNOSPIType = ENoSPIPictureType_GIF;
 		LoadingFileType = EWorkFileType_GDIP_PICTURE;
-		PostGIFAnimate = true;
+		PostAnimate = EAnimationType_GIF;
 		return (true);
 	}
 
@@ -365,7 +406,7 @@ namespace milligram
 		}
 
 		// jpeg かどうか調べる
-		if ((int)((BYTE *)FileData[0]) == 0xFF && (int)((BYTE *)FileData[1]) == 0xD8)
+		if (FileData[0] == (BYTE)0xFF && FileData[1] == (BYTE)0xD8)
 		{
 			PostSpi = nullptr;
 			PostImageInfo = SrcImageInfo;
@@ -406,22 +447,151 @@ namespace milligram
 		return(false);
 	}
 
+	// NOTE:未使用
+	bool CSpiLoader::LoadFromFileEntity(CImageInfo &SrcImageInfo, FARPROC ProgressCallback)
+	{
+		SPictureInfo PicInfo = {};
+
+		Showing = false;
+
+		if (LoadingFileType == EWorkFileType_SPI_ARCHIVE)
+		{
+			HANDLE HInfo;
+#ifdef _WIN64
+			if (PostSpi->GetArchiveInfoW((LPWSTR)SrcImageInfo.FileName.c_str(), 0, 0, (void**)&HInfo) != 0) return (false);
+			SArchivedFileInfoW *pInfos = (SArchivedFileInfoW *)LocalLock(HInfo);
+#else
+			std::string file_n = acfc::UnicodeToMultiByte(SrcImageInfo.FileName);
+			if (PostSpi->GetArchiveInfo((LPSTR)file_n.c_str(), 0, 0, (void**)&HInfo) != 0) return (false);
+			SArchivedFileInfo *pInfos = (SArchivedFileInfo *)LocalLock(HInfo);
+#endif
+			Animate = EAnimationType_NONE;
+
+			nowArchivedFileInfo.clear();
+			ImageNum = 0;
+
+			while (pInfos[ImageNum].Method[0] != 0)
+			{
+				nowArchivedFileInfo.push_back(pInfos[ImageNum]);
+				ImageNum++;
+			}
+
+			LocalUnlock(HInfo);
+			LocalFree(HInfo);
+
+			Clear((EPluginMode)(EPluginMode_PICTURE | EPluginMode_ARCHIVE));
+
+			Mode = EPluginMode_ARCHIVE;
+
+			ArchiveSpi = PostSpi;
+			ImageInfo = PostImageInfo;
+
+			return (true);
+		}
+		else if (LoadingFileType == EWorkFileType_SPI_PICTURE)
+		{
+			Animate = EAnimationType_NONE;
+
+			try
+			{
+				HANDLE HBmpInfo, HBmpData;
+
+#ifdef _WIN64
+				if (PostSpi->GetPicture((LPCSTR)SrcImageInfo.FileName.c_str(), 0, 1, &HBmpInfo, &HBmpData, ProgressCallback, 0) != 0) return (false);
+#else
+				std::string file_n = acfc::UnicodeToMultiByte(SrcImageInfo.FileName);
+				if (PostSpi->GetPicture((LPSTR)file_n.c_str(), 0, 0, &HBmpInfo, &HBmpData, ProgressCallback, 0) != 0) return (false);
+#endif
+
+				Clear(EPluginMode_PICTURE);
+
+				HANDLE pBmp = GlobalLock(HBmpData); // Win32 API でロック
+				BITMAPINFO *pInfo = (BITMAPINFO*)GlobalLock(HBmpInfo);
+
+				OrgWidth = pInfo->bmiHeader.biWidth;
+				OrgHeight = pInfo->bmiHeader.biHeight;
+
+				BitmapGDIP = new Gdiplus::Bitmap(pInfo, pBmp);
+				BitmapGDIP->GetHBITMAP(0, &hBitmap);
+
+				GlobalUnlock(pBmp);
+				GlobalUnlock(pInfo);
+				GlobalFree(pBmp);
+				GlobalFree(pInfo);
+			}
+			catch (...)
+			{
+				return(false);
+			}
+			// NOTE:メモリに一旦読み込む必要があるので見送り
+			//if (FixRotate == false)
+			//{
+			//	Rotate = SrcImageInfo.Rotate;
+			//	if (Rotate < 0) Rotate = CheckOrientation(FileData, DataSize);
+			//}
+			//else
+			//{
+			//	if (Rotate < 0) Rotate = CheckOrientation(FileData, DataSize);
+			//}
+			SrcImageInfo.Rotate = Rotate;
+
+			Mode = (EPluginMode)(Mode & (EPluginMode_ALL ^ EPluginMode_PICTURE));
+			Mode = (EPluginMode)(Mode | EPluginMode_SPI);
+
+			PluginName = acfc::MultiByteToUnicode(PostSpi->PluginName);
+		}
+		else return (false);
+
+		BufWidth = ORotWidth = SrcRWidth = OrgWidth;
+		BufHeight = ORotHeight = SrcRHeight = OrgHeight;
+
+		if (Rotate % 2 == 0)
+		{
+			ORotWidth = OrgWidth;
+			ORotHeight = OrgHeight;
+		}
+		else
+		{
+			ORotWidth = OrgHeight;
+			ORotHeight = OrgWidth;
+		}
+
+		NowSpi = PostSpi;
+		NOSPIType = PostNOSPIType;
+
+		Showing = true;
+		MustBackBufferTrans = true;
+
+		CreateRotateBuffer();
+
+		AnimePlaying = (Animate != EAnimationType_NONE);
+		return (true);
+	}
+
+
 	// 画像ファイルを実際に読み込む
-	bool CSpiLoader::LoadFromFileInMemory(CImageInfo &SrcImageInfo, BYTE* FileData, UINT DataSize, FARPROC ProgressCallback)
+	bool CSpiLoader::LoadFromFileInMemory(CImageInfo &SrcImageInfo, BYTE* FileData, LONG DataSize, FARPROC ProgressCallback)
 	{
 		if (FileData == nullptr) return (false);
-		SPictureInfo PicInfo = { 0 };
+		SPictureInfo PicInfo = {};
 
 		Showing = false;
 
 		// アーカイブモードかどうかチェックする
 		// アーカイブモードならファイルの一覧を取得する
-		if (PostSpi != nullptr && strncmp(PostSpi->APIVersion, "00AM", 4) == 0 && SubImageInfo.FileName == L"")
+//		if (PostSpi != nullptr && strncmp(PostSpi->APIVersion, "00AM", 4) == 0 && SubImageInfo.FileName == L"")
+		if(LoadingFileType == EWorkFileType_SPI_ARCHIVE)
 		{
 			HANDLE HInfo;
-			if (PostSpi->GetArchiveInfo((LPSTR)FileData, (int)DataSize, 1, (void**)&HInfo) != 0) return (false);
-
+#ifdef _WIN64
+			if (PostSpi->GetArchiveInfoW((LPWSTR)FileData, DataSize, 1, (void**)&HInfo) != 0) return (false);
+			SArchivedFileInfoW *pInfos = (SArchivedFileInfoW *)LocalLock(HInfo);
+#else
+			if (PostSpi->GetArchiveInfo((LPSTR)FileData, DataSize, 1, (void**)&HInfo) != 0) return (false);
 			SArchivedFileInfo *pInfos = (SArchivedFileInfo *)LocalLock(HInfo);
+#endif
+			Animate = EAnimationType_NONE;
+
 			nowArchivedFileInfo.clear();
 			ImageNum = 0;
 
@@ -444,12 +614,36 @@ namespace milligram
 			return (true);
 		}
 
-		// SPI モードでない場合、素でファイルを読み込んでみる
-		if (PostSpi == nullptr)
+		// WebP モードかどうかチェックする
+		if (LoadingFileType == EWorkFileType_WEBP)
 		{
 			Clear(EPluginMode_PICTURE);
 
-			GIFAnimate = PostGIFAnimate;
+			Animate = PostAnimate;
+
+			WebPData webp_data;
+			webp_data.bytes = FileData;
+			webp_data.size = DataSize;
+
+			GetWebPData(&webp_data);
+
+			OrgWidth = WebPWidth;
+			OrgHeight = WebPHeight;
+
+			Mode = (EPluginMode)(Mode & (EPluginMode_ALL ^ EPluginMode_PICTURE));
+			Mode = (EPluginMode)(Mode | EPluginMode_WEBP);
+
+			PluginName = L"Internal Loader";
+
+			Rotate = 0;
+		}
+		// SPI モードでない場合、素でファイルを読み込んでみる
+		//if (PostSpi == nullptr)
+		else if (LoadingFileType == EWorkFileType_GDIP_PICTURE)
+		{
+			Clear(EPluginMode_PICTURE);
+
+			Animate = PostAnimate;
 
 			try
 			{
@@ -464,11 +658,18 @@ namespace milligram
 				StreamGDIP->Release();
 				StreamGDIP = nullptr;
 				GlobalUnlock(hMemoryGDIP);
+				pMemoryGDIP = nullptr;
 			}
 			catch(...)
 			{
-				GIFAnimate = false;
+				Animate = EAnimationType_NONE;
 				return (false);
+			}
+
+			if (ImageGDIP == nullptr)
+			{
+				Animate = EAnimationType_NONE;
+				return(false);
 			}
 
 			OrgWidth = ImageGDIP->GetWidth();
@@ -491,20 +692,20 @@ namespace milligram
 			}
 			SrcImageInfo.Rotate = Rotate;
 
-			if (GIFAnimate == true)
-				GIFAnimate = GetGIFAnimeData();
+			if (Animate != EAnimationType_NONE)
+				Animate = GetGIFAnimeData();
 
 			PluginName = L"Internal Loader";
 		}
-		else if (strncmp(PostSpi->APIVersion, "00IN", 4) == 0) // TODO:Susie Plugin 動作確認
+		else if (LoadingFileType == EWorkFileType_SPI_PICTURE)
 		{
+			Animate = EAnimationType_NONE;
+
 			try
 			{
-				//if (PostSpi->GetPictureInfo((LPSTR)FileData, (int)DataSize, 1, &PicInfo) == 0) return (false); 必ず失敗する関数があるらしい
-				//if (PicInfo.Info != 0)GlobalFree(PicInfo.Info);         // TEXT info 解放
 				HANDLE HBmpInfo, HBmpData;
 
-				if (PostSpi->GetPicture((LPSTR)FileData, (int)DataSize, 1, &HBmpInfo, &HBmpData, ProgressCallback, 0) != 0) return (false);
+				if (PostSpi->GetPicture((LPSTR)FileData, DataSize, 1, &HBmpInfo, &HBmpData, ProgressCallback, 0) != 0) return (false);
 
 				Clear(EPluginMode_PICTURE);
 
@@ -563,7 +764,11 @@ namespace milligram
 		NOSPIType = PostNOSPIType;
 
 		Showing = true;
-		TransBackBuffer();
+		MustBackBufferTrans = true;
+
+		CreateRotateBuffer();
+
+		AnimePlaying = (Animate != EAnimationType_NONE);
 		return (true);
 	}
 
@@ -671,15 +876,10 @@ namespace milligram
 
 	bool CSpiLoader::SetFormSize(int iWidth, int iHeight)
 	{
-		switch (Rotate)
+		if (Rotate == 1 || Rotate == 3)
 		{
-		case 1:
-		case 3:
-			int c = iHeight;
-			iHeight = iWidth;
-			iWidth = c;
-			break;
-
+			int c = iWidth;
+			iWidth = iHeight; iHeight = c;
 		}
 
 		if (OrgWidth > iWidth || OrgHeight > iHeight)
@@ -695,8 +895,37 @@ namespace milligram
 			return (TransBackBuffer());
 		}
 
+		if (MustBackBufferTrans)return(TransBackBuffer());
+
 		return (false);
 	}
+
+	bool CSpiLoader::CreateRotateBuffer(void)
+	{
+		if (pBmpRInfo != nullptr)DeleteRotateBuffer();
+		pBmpRInfo = new BITMAPINFO();
+		pBmpRInfo->bmiHeader.biSize = (DWORD)sizeof(BITMAPINFOHEADER);
+
+		pBmpRInfo->bmiHeader.biPlanes = 1;
+		pBmpRInfo->bmiHeader.biBitCount = 32;
+		pBmpRInfo->bmiHeader.biCompression = BI_RGB;
+		pBmpRInfo->bmiHeader.biWidth = OrgWidth;
+		pBmpRInfo->bmiHeader.biHeight = OrgHeight;
+
+		hBmpRData = CreateDIBSection(nullptr, pBmpRInfo, DIB_RGB_COLORS, (void **)&pBmpRData, nullptr, 0);
+		return(true);
+	}
+
+	bool CSpiLoader::DeleteRotateBuffer(void)
+	{
+		delete pBmpRInfo;
+		pBmpRInfo = nullptr;
+		DeleteObject(hBmpRData);
+		pBmpRData = nullptr;
+		hBmpRData = nullptr;
+		return(true);
+	}
+
 
 	// バックバッファに画像を転送する
 	bool CSpiLoader::TransBackBuffer(void)
@@ -704,92 +933,162 @@ namespace milligram
 		if (Showing == false)return(true);
 		POINT points[3];
 
-		switch (Rotate)
+		if (Rotate == 0 || Rotate == 2 || Rotate == -1)
 		{
-		case 0:
-		case 2:
-		default:
 			SrcRWidth = BufWidth;
 			SrcRHeight = BufHeight;
 			ORotWidth = OrgWidth;
 			ORotHeight = OrgHeight;
-			break;
-		case 1:
-		case 3:
-			SrcRWidth = BufHeight;
-			SrcRHeight = BufWidth;
-			ORotWidth = OrgHeight;
-			ORotHeight = OrgWidth;
-			break;
-		}
 
-		CheckBackBuffer(SrcRWidth, SrcRHeight);
-		// 転送先を準備する
-		switch (Rotate)
-		{
-		case 0:
-			points[0].x = 0; points[0].y = BufMaxHeight - BufHeight;
-			points[1].x = BufWidth; points[1].y = BufMaxHeight - BufHeight;
-			points[2].x = 0; points[2].y = BufMaxHeight;
-			break;
-		case 1:
-			points[0].x = BufHeight; points[0].y = BufMaxHeight - BufWidth;
-			points[1].x = BufHeight; points[1].y = BufMaxHeight;
-			points[2].x = 0; points[2].y = 0 + BufMaxHeight - BufWidth;
-			break;
-		case 2:
-			points[0].x = BufWidth - 1; points[0].y = BufMaxHeight - 1;
-			points[1].x = 0 - 1; points[1].y = BufMaxHeight - 1;
-			points[2].x = BufWidth - 1; points[2].y = BufMaxHeight - BufHeight - 1;
-			break;
-		case 3:
-			points[0].x = 0; points[0].y = BufMaxHeight;
-			points[1].x = 0; points[1].y = BufMaxHeight - BufWidth;
-			points[2].x = BufHeight; points[2].y = BufMaxHeight;
-			break;
-		}
+			CheckBackBuffer(SrcRWidth, SrcRHeight);
+			// 転送先を準備する
+			switch (Rotate)
+			{
+			case 0:
+				points[0].x = 0; points[0].y = BufMaxHeight - BufHeight;
+				points[1].x = BufWidth; points[1].y = BufMaxHeight - BufHeight;
+				points[2].x = 0; points[2].y = BufMaxHeight;
+				break;
+			case 1:
+				points[0].x = BufHeight; points[0].y = BufMaxHeight - BufWidth;
+				points[1].x = BufHeight; points[1].y = BufMaxHeight;
+				points[2].x = 0; points[2].y = BufMaxHeight - BufWidth;
+				break;
+			case 2:
+				points[0].x = BufWidth - 1; points[0].y = BufMaxHeight - 1;
+				points[1].x = 0 - 1; points[1].y = BufMaxHeight - 1;
+				points[2].x = BufWidth - 1; points[2].y = BufMaxHeight - BufHeight - 1;
+				break;
+			case 3:
+				points[0].x = 0; points[0].y = BufMaxHeight;
+				points[1].x = 0; points[1].y = BufMaxHeight - BufWidth;
+				points[2].x = BufHeight; points[2].y = BufMaxHeight;
+				break;
+			}
 
+			// 転送元の準備
+			HDC sDC = CreateCompatibleDC(nullptr);
+			HBITMAP sDC_Bitmap = (HBITMAP)SelectObject(sDC, hBitmap);
 
-		// 転送元の準備
-		HDC sDC = CreateCompatibleDC(nullptr);
-		HBITMAP sDC_Bitmap = (HBITMAP)SelectObject(sDC, hBitmap);
+			// 転送先の準備
+			HDC dDC = CreateCompatibleDC(sDC);
+			HBITMAP dDC_Bitmap = (HBITMAP)SelectObject(dDC, hBmpData);
 
-		// 転送先の準備
-		HDC dDC = CreateCompatibleDC(sDC);
-		HBITMAP dDC_Bitmap = (HBITMAP)SelectObject(dDC, hBmpData);
+			// 転送
+			int OldStretchMode = SetStretchBltMode(dDC, STRETCH_HALFTONE);
+			POINT p;
+			SetBrushOrgEx(dDC, 0, 0, &p);
 
-		// 転送
-		int OldStretchMode = SetStretchBltMode(dDC, STRETCH_HALFTONE);
-		POINT p;
-		SetBrushOrgEx(dDC, 0, 0, &p);
+			bool result = PlgBlt(dDC, points,
+				sDC,
+				0, 0, OrgWidth, OrgHeight,
+				nullptr, 0, 0);
 
-		bool result = PlgBlt(dDC, points,
-			sDC,
-			0, 0, OrgWidth, OrgHeight,
-			nullptr, 0, 0);
+			SetStretchBltMode(dDC, OldStretchMode);
 
-		SetStretchBltMode(dDC, OldStretchMode);
+			int value;
+			if (result == false)
+			{
+				value = GetLastError();
+				SelectObject(sDC, sDC_Bitmap);
+				SelectObject(dDC, dDC_Bitmap);
+				DeleteDC(sDC);
+				DeleteDC(dDC);
+				return (false);
+			}
 
-		int value;
-		if (result == false)
-		{
-			value = GetLastError();
+			SetStretchBltMode(dDC, OldStretchMode);
+
 			SelectObject(sDC, sDC_Bitmap);
 			SelectObject(dDC, dDC_Bitmap);
 			DeleteDC(sDC);
 			DeleteDC(dDC);
-			return (false);
+
+			MustBackBufferTrans = false;
+
+			return (true);
+		}
+		else
+		{
+			SrcRWidth = BufHeight;
+			SrcRHeight = BufWidth;
+			ORotWidth = OrgHeight;
+			ORotHeight = OrgWidth;
+
+			CheckBackBuffer(SrcRWidth, SrcRHeight);
+
+			// 転送元の準備
+			HDC sDC = CreateCompatibleDC(nullptr);
+			HBITMAP sDC_Bitmap = (HBITMAP)SelectObject(sDC, hBitmap);
+
+			// 転送先の準備
+			HDC mDC = CreateCompatibleDC(sDC);
+			HBITMAP mDC_Bitmap = (HBITMAP)SelectObject(mDC, hBmpRData);
+
+			// 転送
+			SetStretchBltMode(mDC, STRETCH_HALFTONE);
+			POINT p = {};
+			SetBrushOrgEx(mDC, 0, 0, &p);
+
+			StretchBlt(mDC, 0, 0, BufWidth, BufHeight,
+				       sDC, 0, 0, OrgWidth, OrgHeight,
+						SRCCOPY);
+
+			// 転送先を準備する
+			switch (Rotate)
+			{
+			case 0:
+				points[0].x = 0; points[0].y = BufMaxHeight - BufHeight;
+				points[1].x = BufWidth; points[1].y = BufMaxHeight - BufHeight;
+				points[2].x = 0; points[2].y = BufMaxHeight;
+				break;
+			case 1:
+				points[0].x = BufHeight; points[0].y = BufMaxHeight - BufWidth;
+				points[1].x = BufHeight; points[1].y = BufMaxHeight;
+				points[2].x = 0; points[2].y = BufMaxHeight - BufWidth;
+				break;
+			case 2:
+				points[0].x = BufWidth - 1; points[0].y = BufMaxHeight - 1;
+				points[1].x = 0 - 1; points[1].y = BufMaxHeight - 1;
+				points[2].x = BufWidth - 1; points[2].y = BufMaxHeight - BufHeight - 1;
+				break;
+			case 3:
+				points[0].x = 0; points[0].y = BufMaxHeight;
+				points[1].x = 0; points[1].y = BufMaxHeight - BufWidth;
+				points[2].x = BufHeight; points[2].y = BufMaxHeight;
+				break;
+			}
+
+			// 転送先の準備
+			HDC dDC = CreateCompatibleDC(sDC);
+			HBITMAP dDC_Bitmap = (HBITMAP)SelectObject(dDC, hBmpData);
+
+			// 転送
+			int OldStretchMode = SetStretchBltMode(dDC, STRETCH_HALFTONE);
+			p = {};
+			SetBrushOrgEx(mDC, 0, 0, &p);
+
+			bool result = PlgBlt(dDC, points,
+				mDC,
+				0, 0, BufWidth, BufHeight,
+				nullptr, 0, 0);
+
+			SetStretchBltMode(dDC, OldStretchMode);
+
+			SelectObject(sDC, sDC_Bitmap);
+			SelectObject(mDC, mDC_Bitmap);
+			SelectObject(dDC, dDC_Bitmap);
+
+			DeleteDC(sDC);
+			DeleteDC(mDC);
+			DeleteDC(dDC);
 		}
 
-		SetStretchBltMode(dDC, OldStretchMode);
-
-		SelectObject(sDC, sDC_Bitmap);
-		SelectObject(dDC, dDC_Bitmap);
-		DeleteDC(sDC);
-		DeleteDC(dDC);
+		MustBackBufferTrans = false;
 
 		return (true);
 	}
+
 
 	bool CSpiLoader::AbsoluteRotate(int Value)
 	{
@@ -810,113 +1109,106 @@ namespace milligram
 		return (TransBackBuffer());
 	}
 
-	bool CSpiLoader::PauseGIFAnimate(void)
+	bool CSpiLoader::PauseAnimate(void)
 	{
-		if (Showing == false || GIFAnimate == false) return (false);
+		if (Showing == false || Animate == EAnimationType_NONE) return (false);
 		PausedTGT = timeGetTime();
 		return (true);
 	}
-	bool CSpiLoader::RestartGIFAnimate(void)
+	bool CSpiLoader::RestartAnimate(void)
 	{
-		if (Showing == false || GIFAnimate == false) return (false);
+		if (Showing == false || Animate == EAnimationType_NONE) return (false);
 		PreTGT += timeGetTime() - PausedTGT;
 		return (true);
+	}
+
+	bool CSpiLoader::AnimateUpDateFrame(bool FrameSkip)
+	{
+		if (Animate == EAnimationType_NONE || AnimePlaying == false)return(false);
+		AnimeProcessing = true;
+
+		if (LoopCount <= LoopIndex && LoopCount > 0)
+		{
+			AnimeProcessing = false;
+			AnimePlaying = false;
+			return(false);
+		}
+
+		bool Result = false;
+		switch (Animate)
+		{
+		case EAnimationType_GIF:
+			Result = GIFAnimateUpDateFrame(FrameSkip);
+			break;
+		case EAnimationType_WEBP:
+			Result = WebPAnimateUpDateFrame(FrameSkip);
+			break;
+		}
+
+		AnimeProcessing = false;
+		return(Result);
 	}
 
 	bool CSpiLoader::GIFAnimateUpDateFrame(bool FrameSkip)
 	{
 		bool lockTaken = false;
 		bool Result = true;
-		try
-		{
-			while (true)
-			{
-				if (LoopCount <= LoopIndex && LoopCount > 0)
-				{
-					Result = false;
-					break;
-				}
 
+		FrameIndex++;
+		if (FrameIndex >= FrameCount)
+		{
+			LoopIndex++;
+
+			DropFrame = DropCount;
+			DropCount = 0;
+
+			if (LoopCount == LoopIndex)return(false);
+
+			FrameIndex = 0;
+		}
+
+		DeleteObject(hBitmap);
+
+		NowTGT = timeGetTime();
+
+		int D;
+		if (NowTGT - PreTGT < DelayTime)
+			D = 0;
+		else
+			D = (int)(NowTGT - PreTGT) - (int)DelayTime;
+
+		PreTGT = NowTGT;
+
+		DelayTime = Delay[FrameIndex] - D;
+		if (FrameSkip == true)
+		{
+			while (DelayTime < 0)
+			{
 				FrameIndex++;
+				DropCount++;
+
 				if (FrameIndex >= FrameCount)
 				{
-					LoopIndex++;
-
 					DropFrame = DropCount;
 					DropCount = 0;
-
+					LoopIndex++;
 					if (LoopCount == LoopIndex)
 					{
-						Result = false;
+						FrameIndex--;
 						break;
 					}
-
 					FrameIndex = 0;
 				}
-
-				if (GIFAnimate == false)
-				{
-					Result = false;
-					break;
-				}
-				DeleteObject(hBitmap);
-
-				NowTGT = timeGetTime();
-
-				int D;
-				if (NowTGT - PreTGT < DelayTime)
-				{
-					D = 0;
-				}
-				else
-				{
-					D = (int)(NowTGT - PreTGT) - (int)DelayTime;
-				}
-				PreTGT = NowTGT;
-
-				DelayTime = Delay[FrameIndex] - D;
-				if (FrameSkip == true)
-				{
-					while (DelayTime < 0)
-					{
-						FrameIndex++;
-						DropCount++;
-
-						if (FrameIndex >= FrameCount)
-						{
-							DropFrame = DropCount;
-							DropCount = 0;
-							LoopIndex++;
-							if (LoopCount == LoopIndex)
-							{
-								FrameIndex--;
-								break;
-							}
-							FrameIndex = 0;
-						}
-						DelayTime += Delay[FrameIndex];
-					}
-				}
-				else
-				{
-					if (DelayTime < 0)DelayTime = 17;
-				}
-				GetGIFAnimeData(FrameIndex);
-
-				TransBackBuffer();
-				break;
+				DelayTime += Delay[FrameIndex];
 			}
 		}
-		catch (...)
+		else
 		{
+			DropFrame = 0;
+			if (DelayTime < 17)DelayTime = 17;
 		}
 
-		return (Result);
-	}
-
-	void CSpiLoader::GetGIFAnimeData(int aFrameIndex)
-	{
-		if (GIFAllFrame)
+		if (AllFrame)
 		{
 			DeleteObject(hBitmap);
 			GIFBitmapGDIP[FrameIndex]->GetHBITMAP(0, &hBitmap);
@@ -931,8 +1223,283 @@ namespace milligram
 
 			BitmapGDIP->GetHBITMAP(0, &hBitmap);
 		}
+
+		TransBackBuffer();
+		return (Result);
 	}
 
+	bool CSpiLoader::WebPAnimateUpDateFrame(bool FrameSkip)
+	{
+		bool lockTaken = false;
+		bool Result = true;
+
+		if (AllFrame)
+		{
+			FrameIndex++;
+			if (FrameIndex >= FrameCount)
+			{
+				LoopIndex++;
+
+				DropFrame = DropCount;
+				DropCount = 0;
+
+				if (LoopCount == LoopIndex)return(false);
+
+				FrameIndex = 0;
+			}
+
+			NowTGT = timeGetTime();
+
+			int D;
+			if (NowTGT - PreTGT < DelayTime)
+				D = 0;
+			else
+				D = (int)(NowTGT - PreTGT) - (int)DelayTime;
+
+			PreTGT = NowTGT;
+
+			DelayTime = Delay[FrameIndex] - D;
+			if (FrameSkip == true)
+			{
+				while (DelayTime < 0)
+				{
+					FrameIndex++;
+					DropCount++;
+
+					if (FrameIndex >= FrameCount)
+					{
+						DropFrame = DropCount;
+						DropCount = 0;
+						LoopIndex++;
+						if (LoopCount == LoopIndex)
+						{
+							FrameIndex--;
+							break;
+						}
+						FrameIndex = 0;
+					}
+					DelayTime += Delay[FrameIndex];
+				}
+			}
+			else
+			{
+				DropFrame = 0;
+				if (DelayTime < 17)DelayTime = 17;
+			}
+
+			hBitmap = hWebPAnimeBitmap[FrameIndex];
+
+			TransBackBuffer();
+		}
+		else
+		{
+			NowTGT = timeGetTime();
+
+			int D; // 遅れ分
+			if (NowTGT - PreTGT < DelayTime)
+				D = 0;
+			else
+				D = (int)(NowTGT - PreTGT) - (int)DelayTime;
+
+			PreTGT = NowTGT;
+
+			if (FrameSkip == true)
+			{
+				int tmpDelay, DelayDef;
+				uint8_t *buf;
+				do 
+				{
+					if (WebPAnimDecoderHasMoreFrames(WebPDecoder) == false)
+					{
+						WebPAnimDecoderReset(WebPDecoder);
+						WebPAnimDecoderGetNext(WebPDecoder, &buf, &tmpDelay);
+						PreDelay = 0;
+						DropFrame = DropCount;
+						DropCount = 1;
+						DelayDef = tmpDelay;
+						FrameIndex = 0;
+						LoopIndex++;
+					}
+					else
+					{
+						WebPAnimDecoderGetNext(WebPDecoder, &buf, &tmpDelay);
+						DelayDef = tmpDelay - PreDelay;
+						PreDelay = tmpDelay;
+						DropCount++;
+						FrameIndex++;
+					}
+					D = D - DelayDef;
+				}
+				while(D > 0 && (LoopIndex < LoopCount || LoopCount == 0));
+				DropCount--;
+				memcpy(pWebPBuf, buf, 4 * WebPWidth * WebPHeight);
+				DelayTime = -D;
+			}
+			else
+			{
+				DropFrame = 0;
+				int tmpDelay;
+				uint8_t *buf;
+				if (WebPAnimDecoderHasMoreFrames(WebPDecoder) == false)
+				{
+					WebPAnimDecoderReset(WebPDecoder);
+					FrameIndex = 0;
+					LoopIndex++;
+				}
+				else
+				{
+					FrameIndex++;
+				}
+
+				WebPAnimDecoderGetNext(WebPDecoder, &buf, &tmpDelay);
+				memcpy(pWebPBuf, buf, 4 * WebPWidth * WebPHeight);
+				DelayTime = D + tmpDelay;
+				if (DelayTime < 17)DelayTime = 17;
+			}
+
+			TransBackBuffer();
+		}
+		return (Result);
+	}
+
+	void CSpiLoader::GetWebPData(WebPData *webp_data)
+	{
+		Animate = EAnimationType_NONE;
+		WebPDemuxer* demux = WebPDemux(webp_data);
+
+		uint32_t width = WebPDemuxGetI(demux, WEBP_FF_CANVAS_WIDTH);
+		uint32_t height = WebPDemuxGetI(demux, WEBP_FF_CANVAS_HEIGHT);
+		// ... (Get information about the features present in the WebP file).
+		uint32_t flags = WebPDemuxGetI(demux, WEBP_FF_FORMAT_FLAGS);
+
+		if (flags & ANIMATION_FLAG)
+		{
+			// Animation Exists
+			GetWebPAnimationData(webp_data);
+		}
+		else
+		{
+			BITMAPINFO *pWebPInfo = new BITMAPINFO();
+			pWebPInfo->bmiHeader.biSize = (DWORD)sizeof(BITMAPINFOHEADER);
+
+			pWebPInfo->bmiHeader.biPlanes = 1;
+			pWebPInfo->bmiHeader.biBitCount = 32;
+			pWebPInfo->bmiHeader.biCompression = BI_RGB;
+			pWebPInfo->bmiHeader.biWidth = WebPWidth;
+			pWebPInfo->bmiHeader.biHeight = -WebPHeight;
+
+			hBitmap = CreateDIBSection(nullptr, pWebPInfo, DIB_RGB_COLORS, (void**)&pWebPBuf, nullptr, 0);
+			delete pWebPInfo;
+
+			pWebPBuf = WebPDecodeBGRAInto(webp_data->bytes, webp_data->size, pWebPBuf, 4 * WebPWidth * WebPHeight, WebPWidth * 4);
+		}
+
+		if (flags & EXIF_FLAG)
+		{
+			// Exif Exists
+			GetWebPExifData(webp_data);
+		}
+
+
+		WebPDemuxDelete(demux);
+	}
+
+	void CSpiLoader::GetWebPAnimationData(WebPData *webp_data)
+	{
+		WebPAnimDecoderOptionsInit(&WebPDecOptions);
+		WebPDecOptions.color_mode = MODE_BGRA;
+		WebPDecOptions.use_threads = true;
+		// Tune 'WebPDecOptions' as needed.
+		WebPDecoder = WebPAnimDecoderNew(webp_data, &WebPDecOptions);
+		if (WebPDecoder == nullptr)return;
+		WebPAnimInfo anim_info;
+		WebPAnimDecoderGetInfo(WebPDecoder, &anim_info);
+		
+		FrameCount = anim_info.frame_count;
+		LoopCount = anim_info.loop_count;
+
+		if (WebPWidth * WebPHeight * 32 * FrameCount < MaxAllFrame)
+			AllFrame = true;
+		else
+			AllFrame = false;
+
+		if (FrameCount == 0)return;
+
+		LoopIndex = 0;
+		FrameIndex = 0;
+		DropFrame = 0;
+		DropCount = 0;
+
+		if (AllFrame == true)
+		{
+			BITMAPINFO *pWebPInfo = new BITMAPINFO();
+			pWebPInfo->bmiHeader.biSize = (DWORD)sizeof(BITMAPINFOHEADER);
+
+			pWebPInfo->bmiHeader.biPlanes = 1;
+			pWebPInfo->bmiHeader.biBitCount = 32;
+			pWebPInfo->bmiHeader.biCompression = BI_RGB;
+			pWebPInfo->bmiHeader.biWidth = WebPWidth;
+			pWebPInfo->bmiHeader.biHeight = -WebPHeight;
+
+			Delay = new int[FrameCount];
+			pWebPAnimeBuf = new uint8_t *[FrameCount];
+			hWebPAnimeBitmap = new HBITMAP[FrameCount];
+			for (int i = 0; i < FrameCount; i++)
+			{
+				hWebPAnimeBitmap[i] = CreateDIBSection(nullptr, pWebPInfo, DIB_RGB_COLORS, (void**)&pWebPAnimeBuf[i], nullptr, 0);
+			}
+			delete pWebPInfo;
+
+			int i = 0;
+			while (WebPAnimDecoderHasMoreFrames(WebPDecoder) && i < FrameCount)
+			{
+				uint8_t *buf;
+				WebPAnimDecoderHasMoreFrames(WebPDecoder);
+				WebPAnimDecoderGetNext(WebPDecoder, &buf, &Delay[i]);
+				memcpy(pWebPAnimeBuf[i], buf, 4 * WebPWidth * WebPHeight);
+				i++;
+			}
+
+			for (i = FrameCount - 1; i > 0; i--)
+				Delay[i] -= Delay[i - 1];
+			//		WebPAnimDecoderReset(WebPDecoder);
+			DelayTime = Delay[0];
+		}
+		else
+		{
+			WebPBufData.size = webp_data->size;
+			WebPBufData.bytes = new BYTE[WebPBufData.size];
+			memcpy((void *)WebPBufData.bytes, webp_data->bytes, WebPBufData.size);
+			WebPAnimDecoderDelete(WebPDecoder);
+			WebPDecoder = WebPAnimDecoderNew(&WebPBufData, &WebPDecOptions);
+			WebPAnimDecoderGetInfo(WebPDecoder, &anim_info);
+
+			BITMAPINFO *pWebPInfo = new BITMAPINFO();
+			pWebPInfo->bmiHeader.biSize = (DWORD)sizeof(BITMAPINFOHEADER);
+
+			pWebPInfo->bmiHeader.biPlanes = 1;
+			pWebPInfo->bmiHeader.biBitCount = 32;
+			pWebPInfo->bmiHeader.biCompression = BI_RGB;
+			pWebPInfo->bmiHeader.biWidth = WebPWidth;
+			pWebPInfo->bmiHeader.biHeight = -WebPHeight;
+
+			hBitmap = CreateDIBSection(nullptr, pWebPInfo, DIB_RGB_COLORS, (void**)&pWebPBuf, nullptr, 0);
+			delete pWebPInfo;
+
+			uint8_t *buf;
+			WebPAnimDecoderHasMoreFrames(WebPDecoder);
+			WebPAnimDecoderGetNext(WebPDecoder, &buf, &DelayTime);
+			memcpy(pWebPBuf, buf, 4 * WebPWidth * WebPHeight);
+			PreDelay = DelayTime;
+		}
+		PreTGT = NowTGT = timeGetTime();
+		Animate = EAnimationType_WEBP;
+	}
+
+	void CSpiLoader::GetWebPExifData(WebPData * webp_data)
+	{
+	}
+		
 	int CSpiLoader::CheckOrientation(void)
 	{
 		//            if (BitmapGDIP.RawFormat.Equals(ImageFormat.Jpeg))
@@ -1066,7 +1633,7 @@ namespace milligram
 		return(Result);
 	}
 
-	bool CSpiLoader::GetGIFAnimeData(void)
+	EAnimationType CSpiLoader::GetGIFAnimeData(void)
 	{
 		UINT count;
 		UINT TotalBuffer;
@@ -1101,7 +1668,7 @@ namespace milligram
 		Delay = new int[FrameCount];
 
 		// ディレイデータを得る
-		TotalBuffer = ImageGDIP->GetPropertyItemSize(PropertyTagFrameDelay); // TODO:GIF アニメの読み込みの確認
+		TotalBuffer = ImageGDIP->GetPropertyItemSize(PropertyTagFrameDelay);
 		pItem = (PropertyItem*)malloc(TotalBuffer);
 		ImageGDIP->GetPropertyItem(PropertyTagFrameDelay, TotalBuffer, pItem);
 		for (int i = 0; i < FrameCount; i++)
@@ -1121,12 +1688,12 @@ namespace milligram
 		GUID Guid = FrameDimensionTime;
 		PreTGT = NowTGT = timeGetTime();
 
-		if (OrgWidth * OrgHeight * 32 * FrameCount < GIFMaxAllFrame)
-			GIFAllFrame = true;
+		if (OrgWidth * OrgHeight * 32 * FrameCount < MaxAllFrame)
+			AllFrame = true;
 		else
-			GIFAllFrame = false;
+			AllFrame = false;
 
-		if (GIFAllFrame == true)
+		if (AllFrame == true)
 		{
 			GIFBitmapGDIP = new Bitmap *[FrameCount];
 			for (int i = 0; i < FrameCount; i++)
@@ -1141,8 +1708,7 @@ namespace milligram
 			ImageGDIP->SelectActiveFrame(&Guid, 0);
 		}
 
-
-		return (true);
+		return (EAnimationType_GIF);
 	}
 
 	bool CSpiLoader::SetShowSubIndex(CImageInfo &SrcImageInfo, int SubIndex, FARPROC ProgressCallback)
@@ -1157,19 +1723,25 @@ namespace milligram
 
 			pFileImage = (BYTE *)LocalLock(HFileImage);
 
+#ifdef _WIN64
+			SArchivedFileInfoW tempAFI = nowArchivedFileInfo[SubIndex];
+			std::wstring tPath = tempAFI.Path;
+			std::wstring tFileName = tempAFI.FileName;
+#else
 			SArchivedFileInfo tempAFI = nowArchivedFileInfo[SubIndex];
-
 			std::wstring tPath = acfc::MultiByteToUnicode(tempAFI.Path);
 			std::wstring tFileName = acfc::MultiByteToUnicode(tempAFI.FileName);
+#endif
+
 
 			std::wstring AFileName = tPath + tFileName;
 			SrcImageInfo.FileName = AFileName;
 			SrcImageInfo.FileSize = tempAFI.FileSize;
 			SrcImageInfo.Timestamp = tempAFI.Timestamp;
 
-			if (CheckFileType(SrcImageInfo, pFileImage, nowArchivedFileInfo[SubIndex].FileSize))
+			if (CheckFileType(SrcImageInfo, pFileImage, (LONG)nowArchivedFileInfo[SubIndex].FileSize))
 			{
-				if (LoadFromFileInMemory(SrcImageInfo, pFileImage, nowArchivedFileInfo[SubIndex].FileSize, ProgressCallback) == true)
+				if (LoadFromFileInMemory(SrcImageInfo, pFileImage, (LONG)nowArchivedFileInfo[SubIndex].FileSize, ProgressCallback) == true)
 				{
 					Clear(EPluginMode_ACVINNER);
 					Mode = (EPluginMode)(Mode | EPluginMode_ACVINNER);
@@ -1193,8 +1765,13 @@ namespace milligram
 		SubFileList->clear();
 		for (i = 0; i < (int)(nowArchivedFileInfo.size()); i++)
 		{
+#ifdef _WIN64
+			std::wstring tPath = nowArchivedFileInfo[i].Path;
+			std::wstring tFileName = nowArchivedFileInfo[i].FileName;
+#else
 			std::wstring tPath = acfc::MultiByteToUnicode(nowArchivedFileInfo[i].Path);
 			std::wstring tFileName = acfc::MultiByteToUnicode(nowArchivedFileInfo[i].FileName);
+#endif
 
 			CImageInfo NewII;
 
@@ -1213,10 +1790,16 @@ namespace milligram
 
 		for (i = 0; i < ImageNum; i++)
 		{
+#ifdef _WIN64
+			SArchivedFileInfoW tempAFI = nowArchivedFileInfo[i];
+			std::wstring tPath = tempAFI.Path;
+			std::wstring tFileName = tempAFI.FileName;
+#else
 			SArchivedFileInfo tempAFI = nowArchivedFileInfo[i];
-
 			std::wstring tPath = acfc::MultiByteToUnicode(tempAFI.Path);
 			std::wstring tFileName = acfc::MultiByteToUnicode(tempAFI.FileName);
+#endif
+
 
 			if (Src.FileName == tPath + tFileName) break;
 		}
@@ -1226,7 +1809,7 @@ namespace milligram
 		return (Result);
 	}
 
-	bool CSpiLoader::SetSubImageFile(std::vector<CImageInfo>* FileList, int &i, int Ofs)
+	bool CSpiLoader::SetSubImageFile(std::vector<CImageInfo>* FileList, int &i, int Dir)
 	{
 		while (FileList->size() > 0)
 		{
@@ -1239,7 +1822,7 @@ namespace milligram
 			itr += i;
 			FileList->erase(itr);
 
-			if (Ofs < 0) i += Ofs;
+			if (Dir < 0) i += Dir;
 			if (i < 0) break;
 			if (i >= (int)(FileList->size())) break;
 		}
@@ -1255,6 +1838,7 @@ namespace milligram
 			if (hBitmap != nullptr)
 			{
 				DeleteObject(hBitmap);
+				hBitmap = nullptr;
 			}
 
 			if (BitmapGDIP != nullptr)
@@ -1271,10 +1855,8 @@ namespace milligram
 
 			if (hMemoryGDIP != nullptr)
 			{
-//				GlobalUnlock(hMemoryGDIP);
 				GlobalFree(hMemoryGDIP);
 				hMemoryGDIP = nullptr;
-				pMemoryGDIP = nullptr;
 			}
 			
 			if (StreamGDIP != nullptr)
@@ -1283,7 +1865,7 @@ namespace milligram
 				StreamGDIP = nullptr;
 			}
 
-			if (GIFAnimate)
+			if (Animate != EAnimationType_NONE)
 			{
 				delete[] Delay;
 				Delay = nullptr;
@@ -1296,7 +1878,7 @@ namespace milligram
 					delete[] GIFBitmapGDIP;
 					GIFBitmapGDIP = nullptr;
 				}
-				GIFAnimate = false;
+				Animate = EAnimationType_NONE;
 			}
 			break;
 
@@ -1310,14 +1892,55 @@ namespace milligram
 			if (hBitmap != nullptr)
 			{
 				DeleteObject(hBitmap);
+				hBitmap = nullptr;
+			}
+			break;
+
+		case EPluginMode_WEBP:
+			if (WebPDecoder != nullptr)
+			{
+				WebPAnimDecoderDelete(WebPDecoder);
+				WebPDecoder = nullptr;
+
+				if (WebPBufData.size > 0)
+				{
+					delete[]WebPBufData.bytes;
+					WebPBufData.bytes = 0;
+					WebPBufData.size = 0;
+				}
+
+				if (hWebPAnimeBitmap != nullptr)
+				{
+					if (Delay != nullptr)
+					{
+						delete[] Delay;
+						Delay = nullptr;
+					}
+					for (int i = 0; i < FrameCount; i++)
+					{
+						DeleteObject(hWebPAnimeBitmap[i]);
+					}
+					delete[] hWebPAnimeBitmap; hWebPAnimeBitmap = nullptr;
+					delete[] pWebPAnimeBuf; pWebPAnimeBuf = nullptr;
+					
+					hBitmap = nullptr; // hWebPAimeBitmap[i] のいずれかが入っているので削除する必要はない
+				}
+				Animate = EAnimationType_NONE;
+			}
+			if (hBitmap != nullptr)
+			{
+				DeleteObject(hBitmap);
+				hBitmap = nullptr;
 			}
 			break;
 		}
+
 
 		if ((DelMode & EPluginMode_PICTURE) != 0)
 		{
 			OrgWidth = 0;
 			OrgHeight = 0;
+			DeleteRotateBuffer();
 		}
 
 		if ((Mode & DelMode & EPluginMode_ARCHIVE) != 0)
@@ -1371,58 +1994,84 @@ namespace milligram
 			return;
 	}
 
-
 	Gdiplus::Bitmap* CSpiLoader::DuplicateImage(int newWidth, int newHeight)
 	{
 		if ((Mode & EPluginMode_ALL) == 0) return (nullptr);
-		
-		// 転送先の準備
 
-		HDC dDC = CreateCompatibleDC(nullptr);
-		HBITMAP hBmp = CreateCompatibleBitmap(dDC, newWidth, newHeight);
-		HDC sDC = CreateCompatibleDC(dDC);
-		HBITMAP sDC_hBitmap = (HBITMAP)SelectObject(sDC, hBitmap);
+		if (Showing == false)return(false);
 
-		int OldStretchMode = SetStretchBltMode(dDC, STRETCH_HALFTONE);
-		bool res = StretchBlt(dDC,
-			0, 0, newWidth, newHeight,
-			sDC,
-			0, 0, OrgWidth, OrgHeight,
-			SRCCOPY);
+		DIBSECTION ds;
+		GetObject(hBitmap, sizeof(DIBSECTION), &ds);
 
-		SetStretchBltMode(dDC, OldStretchMode);
+		//make sure compression is BI_RGB
+		ds.dsBmih.biCompression = BI_RGB;
 
-		DeleteDC(dDC);
-		SelectObject(sDC, sDC_hBitmap);
-		DeleteDC(sDC);
+		// NOTE:WebP フォーマットは逆に入っている フォーマットを追加する場合には増やす必要がある
+		if (Mode & EPluginMode_WEBP)ds.dsBmih.biHeight = -ds.dsBmih.biHeight;
 
-		Gdiplus::Bitmap *bmp = new Bitmap(hBitmap, 0);
+		//Convert DIB to DDB
+		HDC hdc = GetDC(nullptr);
+		HBITMAP hBmp = CreateDIBitmap(hdc, &ds.dsBmih, CBM_INIT,
+			ds.dsBm.bmBits, (BITMAPINFO*)&ds.dsBmih, DIB_RGB_COLORS);
+		ReleaseDC(nullptr, hdc);
+		DeleteDC(hdc);
+
+		Gdiplus::Bitmap *bmp = new Bitmap(hBmp, 0);
 
 		DeleteObject(hBmp);
 
+		return (bmp);
+	}
 
-/*		// 転送先の準備
-		HDC dDC = GetDC(windowHandle);
-		HBITMAP hBmp = CreateCompatibleBitmap(dDC, newWidth, newHeight);
-		HDC sDC = CreateCompatibleDC(dDC);
-		HBITMAP sDC_hBitmap = (HBITMAP)SelectObject(sDC, hBitmap);
 
+	Gdiplus::Bitmap* CSpiLoader::DuplicateBGImage(int newWidth, int newHeight)
+	{
+		if ((Mode & EPluginMode_ALL) == 0) return (nullptr);
+		
+		if (Showing == false)return(false);
+
+		// 転送先の準備 
+		BITMAPINFO *pbi = new BITMAPINFO();
+		BYTE *pB;
+		HBITMAP hbd;
+		pbi->bmiHeader.biSize = (DWORD)sizeof(BITMAPINFOHEADER);
+
+		pbi->bmiHeader.biPlanes = 1;
+		pbi->bmiHeader.biBitCount = 32;
+		pbi->bmiHeader.biCompression = BI_RGB;
+		pbi->bmiHeader.biWidth = newWidth;
+		pbi->bmiHeader.biHeight = newHeight;
+
+		hbd = CreateDIBSection(nullptr, pbi, DIB_RGB_COLORS, (void **)&pB, nullptr, 0);
+
+		// 転送元の準備
+		HDC sDC = CreateCompatibleDC(nullptr);
+		HBITMAP sDC_Bitmap = (HBITMAP)SelectObject(sDC, hBmpData);
+
+		// 転送先の準備
+		HDC dDC = CreateCompatibleDC(sDC);
+		HBITMAP dDC_Bitmap = (HBITMAP)SelectObject(dDC, hbd);
+
+		// 転送
 		int OldStretchMode = SetStretchBltMode(dDC, STRETCH_HALFTONE);
-		bool res = StretchBlt(dDC,
-			0, 0, newWidth, newHeight,
-			sDC,
-			0, 0, OrgWidth, OrgHeight,
+		POINT p = {};
+		SetBrushOrgEx(dDC, 0, 0, &p);
+
+		StretchBlt(dDC, 0, 0, newWidth, newHeight,
+			sDC, 0, BufMaxHeight - SrcRHeight, SrcRWidth, SrcRHeight,
 			SRCCOPY);
 
 		SetStretchBltMode(dDC, OldStretchMode);
-		
-		ReleaseDC(windowHandle, dDC);
-		SelectObject(sDC, sDC_hBitmap);
+
+		Gdiplus::Bitmap *bmp = new Bitmap(hbd, 0);
+
+		SelectObject(sDC, sDC_Bitmap);
+		SelectObject(dDC, dDC_Bitmap);
 		DeleteDC(sDC);
+		DeleteDC(dDC);
 
-		Gdiplus::Bitmap *bmp = new Bitmap(hBitmap, 0);
-
-		DeleteObject(hBmp);*/
+		delete pbi;
+		DeleteObject(hbd);
 
 		return (bmp);
 	}
@@ -1438,11 +2087,14 @@ namespace milligram
 		//make sure compression is BI_RGB
 		ds.dsBmih.biCompression = BI_RGB;
 
+		// NOTE:WebP フォーマットは逆に入っている フォーマットを追加する場合には増やす必要がある
+		if (Mode & EPluginMode_WEBP)ds.dsBmih.biHeight = -ds.dsBmih.biHeight;
+
 		//Convert DIB to DDB
-		HDC hdc = GetDC(NULL);
+		HDC hdc = GetDC(nullptr);
 		HBITMAP hBmp = CreateDIBitmap(hdc, &ds.dsBmih, CBM_INIT,
 			ds.dsBm.bmBits, (BITMAPINFO*)&ds.dsBmih, DIB_RGB_COLORS);
-		ReleaseDC(NULL, hdc);
+		ReleaseDC(nullptr, hdc);
 		DeleteDC(hdc);
 
 		OpenClipboard(windowHandle);
@@ -1485,14 +2137,19 @@ namespace milligram
 		return 0;
 	}
 
-	bool CSpiLoader::SaveJpeg(std::wstring svFileName, int svWidth, int svHeight, int svCompLevel)
+	bool CSpiLoader::SaveJpeg(std::wstring svFileName, int svWidth, int svHeight, int svCompLevel, bool TransFormed)
 	{
-		Bitmap *bmp = DuplicateImage(svWidth, svHeight);
+		Bitmap *bmp;
+		if(TransFormed == false)
+			bmp = DuplicateImage(svWidth, svHeight);
+		else
+			bmp = DuplicateBGImage(svWidth, svHeight);
+
 		CLSID clsid;
 		GetEncoderClsid(L"image/jpeg", &clsid);
 
 		ULONG qualityValue = svCompLevel;
-		Gdiplus::EncoderParameters params = { 0 };
+		Gdiplus::EncoderParameters params = {};
 		params.Count = 1;
 		params.Parameter[0].Guid = Gdiplus::EncoderQuality;
 		params.Parameter[0].Type = Gdiplus::EncoderParameterValueTypeLong;
@@ -1505,9 +2162,14 @@ namespace milligram
 		return(true);
 	}
 
-	bool CSpiLoader::SavePNG(std::wstring svFileName, int svWidth, int svHeight)
+	bool CSpiLoader::SavePNG(std::wstring svFileName, int svWidth, int svHeight, bool TransFormed)
 	{
-		Bitmap *bmp = DuplicateImage(SrcRWidth, SrcRHeight);
+		Bitmap *bmp;
+		if (TransFormed == false)
+			bmp = DuplicateImage(svWidth, svHeight);
+		else
+			bmp = DuplicateBGImage(svWidth, svHeight);
+
 		CLSID clsid;
 		GetEncoderClsid(L"image/png", &clsid);
 		bmp->Save(svFileName.c_str(), &clsid);

@@ -5,7 +5,7 @@
 CProgressForm *ProgressForm;
 
 // フォームイベントプロシージャ
-BOOL CALLBACK ProgressFormWndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
+INT_PTR CALLBACK ProgressFormWndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
 	bool CallDefault = false;
 	LRESULT result;
@@ -27,10 +27,12 @@ BOOL CProgressForm::ProcessMessages(HWND hWnd, UINT message, WPARAM wParam, LPAR
 		break;
 
 	case WM_CLOSE:
+		Visible = false;
 		EndDialog(hWnd, IDOK);
 		return(TRUE);
 
 	case WM_SHOWWINDOW:
+		Visible = true;
 		if(wParam)Start();
 		break;
 
@@ -62,7 +64,7 @@ void CProgressForm::GetData(std::vector<CImageInfo>& Data)
 	std::copy(Dest.begin(), Dest.end(), std::back_inserter(Data));
 }
 
-int CProgressForm::ShowDialog(HINSTANCE appInstance, HWND hWnd)
+INT_PTR CProgressForm::ShowDialog(HINSTANCE appInstance, HWND hWnd)
 {
 	return (DialogBox(appInstance, TEXT("IDD_PROGRESSFORM"), hWnd, ProgressFormWndProc));
 }

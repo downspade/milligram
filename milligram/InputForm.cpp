@@ -4,7 +4,7 @@
 CInputForm *InputForm;
 
 // フォームイベントプロシージャ
-BOOL CALLBACK InputFormWndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
+INT_PTR CALLBACK InputFormWndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
 	bool CallDefault = false;
 	LRESULT result;
@@ -23,7 +23,7 @@ void CInputForm::SetData(std::wstring atitle, std::wstring ames, std::wstring at
 	Text = atext;
 }
 
-int CInputForm::ShowDialog(HINSTANCE appInstance, HWND hWnd)
+INT_PTR CInputForm::ShowDialog(HINSTANCE appInstance, HWND hWnd)
 {
 	return (DialogBox(appInstance, TEXT("IDD_INPUTFORM"), hWnd, InputFormWndProc));
 }
@@ -38,8 +38,13 @@ BOOL CInputForm::ProcessMessages(HWND hWnd, UINT message, WPARAM wParam, LPARAM 
 		Init(hWnd);
 		break;
 	case WM_CLOSE:
+		Visible = true;
 		EndDialog(hWnd, IDCANCEL);
 		return(TRUE);
+
+	case WM_SHOWWINDOW:
+		Visible = true;
+		break;
 
 	case WM_COMMAND:
 		switch(LOWORD(wParam))

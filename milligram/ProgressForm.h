@@ -12,7 +12,7 @@ class CProgressForm : public acfc::CBaseWindow
 public:
 	void SetData(std::wstring path, bool subFolder, std::wstring fileMaskString);
 	void GetData(std::vector<CImageInfo> &Data);
-	int ShowDialog(HINSTANCE appInstance, HWND hWnd);
+	INT_PTR ShowDialog(HINSTANCE appInstance, HWND hWnd);
 	void Start(void);
 	void UpdateText(void);
 	void End(void);
@@ -34,7 +34,7 @@ private:
 	std::wstring SearchingFile;
 
 	DWORD ThreadID;
-	CRITICAL_SECTION CriticalSection;
+	CRITICAL_SECTION CriticalSection = {};
 	HANDLE hThread;
 	bool SearchEnd;
 

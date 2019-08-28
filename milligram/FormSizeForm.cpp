@@ -3,7 +3,7 @@
 
 CFormSizeForm *FormSizeForm;
 
-BOOL CALLBACK FormSizeFormWndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
+INT_PTR CALLBACK FormSizeFormWndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
 	bool CallDefault = false;
 	LRESULT result;
@@ -28,7 +28,7 @@ void CFormSizeForm::SetData(std::vector<std::wstring>& Str, int w, int h)
 	Ratio = (double)w / h;
 }
 
-int CFormSizeForm::ShowDialog(HINSTANCE appInstance, HWND hWnd)
+INT_PTR CFormSizeForm::ShowDialog(HINSTANCE appInstance, HWND hWnd)
 {
 	return (DialogBox(appInstance, TEXT("IDD_FORMSIZEFORM"), hWnd, FormSizeFormWndProc));
 }
@@ -72,9 +72,15 @@ BOOL CFormSizeForm::ProcessMessages(HWND hWnd, UINT message, WPARAM wParam, LPAR
 	case WM_INITDIALOG:
 		Init(hWnd);
 		break;
+
 	case WM_CLOSE:
+		Visible = false;
 		EndDialog(hWnd, IDCANCEL);
 		return(TRUE);
+
+	case WM_SHOWWINDOW:
+		Visible = true;
+		break;
 
 	case WM_COMMAND:
 		switch (LOWORD(wParam))
@@ -122,7 +128,7 @@ BOOL CFormSizeForm::ProcessMessages(HWND hWnd, UINT message, WPARAM wParam, LPAR
 void CFormSizeForm::WidthEdit_Changed(void)
 {
 	std::wstring temp = acfc::GetWindowString(hWidthEdit);
-	int CurPos = HIWORD(SendMessage(hWidthEdit, EM_GETSEL, 0, 0));
+	size_t CurPos = HIWORD(SendMessage(hWidthEdit, EM_GETSEL, 0, 0));
 
 	temp = WidthStr.CheckString(temp, CurPos);
 
@@ -139,7 +145,7 @@ void CFormSizeForm::WidthEdit_Changed(void)
 void CFormSizeForm::HeightEdit_Changed(void)
 {
 	std::wstring temp = acfc::GetWindowString(hWidthEdit);
-	int CurPos = HIWORD(SendMessage(hWidthEdit, EM_GETSEL, 0, 0));
+	size_t CurPos = HIWORD(SendMessage(hWidthEdit, EM_GETSEL, 0, 0));
 
 	temp = WidthStr.CheckString(temp, CurPos);
 

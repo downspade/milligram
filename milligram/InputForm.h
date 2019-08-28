@@ -8,7 +8,7 @@ class CInputForm : public acfc::CBaseWindow
 {
 public:
 	void SetData(std::wstring atitile, std::wstring ames, std::wstring atext);
-	int ShowDialog(HINSTANCE appInstance, HWND hWnd);
+	INT_PTR ShowDialog(HINSTANCE appInstance, HWND hWnd);
 	std::wstring Result;
 
 	BOOL ProcessMessages(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam, bool &CallDefault);
