@@ -20,6 +20,15 @@ INT_PTR CALLBACK ProgressFormWndProc(HWND hWnd, UINT message, WPARAM wParam, LPA
 BOOL CProgressForm::ProcessMessages(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam, bool & CallDefault)
 {
 	CallDefault = false;
+	if ((GetAsyncKeyState(VK_ESCAPE) & 0x8000) != 0)
+	{
+		if (hThread == nullptr)
+		{
+			EndDialog(hWnd, IDOK);
+			return(TRUE);
+		}
+	}
+
 	switch (message)
 	{
 	case WM_INITDIALOG:
@@ -112,6 +121,7 @@ void CProgressForm::End(void)
 {
 	DeleteCriticalSection(&CriticalSection);
 	CloseHandle(hThread);
+	hThread = nullptr;
 	SendMessage(handle, WM_CLOSE, 0, 0);
 }
 

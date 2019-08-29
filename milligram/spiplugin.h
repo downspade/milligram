@@ -335,6 +335,7 @@ namespace milligram
 		ULONG_PTR GdiplusToken;
 		Bitmap *BitmapGDIP = nullptr;
 		Bitmap **GIFBitmapGDIP = nullptr;
+		HBITMAP *GIFhBitmapGDIP = nullptr;
 		Image *ImageGDIP = nullptr;
 
 		HGLOBAL hMemoryGDIP = nullptr;
@@ -342,8 +343,8 @@ namespace milligram
 		BYTE *pMemoryGDIP = nullptr;
 
 		// アニメーション関連
-		EAnimationType Animate = EAnimationType_NONE;
-		EAnimationType PostAnimate = EAnimationType_NONE;
+		EAnimationType Animate = EAnimationType_NONE; // 値変更してはいけない
+		EAnimationType PostAnimate = EAnimationType_NONE; // 値変更してはいけない
 		int LoopCount = 0;
 		int LoopIndex = 0;
 		int FrameCount = 0;
@@ -352,8 +353,8 @@ namespace milligram
 		int DelayTime = 0;
 		int DropFrame = 0;
 		int DropCount = 0;
-		bool AnimePlaying = false; // GIF アニメループ中かどうか
-		bool AnimeProcessing = false;
+		bool AnimePlaying = false; // アニメループ中かどうかを表し MainForm から値を変更してもいい
+		bool AnimeProcessing = false; // アニメ処理中かどうか
 		bool AllFrame = false; // 全フレームを取得するかどうか
 		int MaxAllFrame = 100 * 1000 * 1000; // アニメ全体のデータ量がこれを上回るなら毎フレーム取得する
 
@@ -383,7 +384,8 @@ namespace milligram
 		int MaxBBufferPixel = 4000 * 4000; // バックバッファーの最大ピクセルサイズ 4000 x 4000 は 64M
 
 		FARPROC ProgressCallback = nullptr;
-		HWND windowHandle = nullptr;
+		HWND hWindow = nullptr;
+		Gdiplus::Color BGColor = Gdiplus::Color(0, 0, 0);
 		CRITICAL_SECTION *CriticalSection;
 
 	public:
@@ -442,7 +444,7 @@ namespace milligram
 		bool ChangeArchiveFileName(std::wstring NewFileName);
 
 		// イメージオブジェクトからビットマップオブジェクトを作る
-		Gdiplus::Bitmap* CreateBMPFromImage(Gdiplus::Image *Src);
+		Gdiplus::Bitmap* CreateBMPFromImage(Gdiplus::Image *Src, HBITMAP *hdest);
 
 		// アーカイブファイル中のインデックスの番号のファイルを読み込む
 		int LoadSubIndex(int &SubIndex, int Ofs);

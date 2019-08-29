@@ -474,7 +474,7 @@ public:
 
 	// 描画関係
 
-	void OnPaint(void); // 描画イベント
+	void OnPaint(bool FullRefresh); // 描画イベント
 	bool GetTransRect(Gdiplus::Rect &wRect, Gdiplus::Rect &Src, Gdiplus::Rect &Dest); // 転送矩形を得る
 	void DrawSSIcon(void); // スライドショーアイコンを描画する
 	void BeginUpdate(void); // 描画を開始する（再入回避）
@@ -626,6 +626,7 @@ public:
 	// GIF アニメ
 	
 	void AnimeThread(void);
+	void SusieClear(EPluginMode Mode);
 	void BeginAnimeThread(void);
 	void EndAnimeThread(void);
 

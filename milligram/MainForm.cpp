@@ -350,6 +350,8 @@ bool CMainForm::Initialize(HINSTANCE hInstance, int nCmdShow, LPWSTR lpCmdLine)
 	// 各種初期化をする
 	DrawColor = GetDrawColor(FullFillColor);
 
+	Susie.BGColor = FullFillColor;
+
 	// メニューを修正
 	SyncMenuChecked();
 
@@ -995,25 +997,25 @@ bool CMainForm::LoadFileList(std::wstring FileName, std::vector<CImageInfo> &Des
 	std::map<std::wstring, std::wstring> Map;
 	acfc::LoadMapFromFile(Map, FileName);
 
-	int Idx, IdxB, mflVer;
+	int sIdx, sAcv, mflVer;
 	mflVer = acfc::GetIntegerValue(Map, TEXT("mflFileVersion"), 0, 0, 0);
 
 	if (mflVer != 2)return(false);
 
-	Idx = acfc::GetIntegerValue(Map, TEXT("ShowIndex"), 0, 0, 0);
-	IdxB = acfc::GetIntegerValue(Map, TEXT("ShowArchive"), -1, -1, 0x7FFFFFFF);
+	sIdx = acfc::GetIntegerValue(Map, TEXT("ShowIndex"), 0, 0, 0);
+	sAcv = acfc::GetIntegerValue(Map, TEXT("ShowArchive"), -1, -1, 0x7FFFFFFF);
 	TryFileName = acfc::GetStringValue(Map, TEXT("ShowFileName"), TryFileName);
 	TryArchiveName = acfc::GetStringValue(Map, TEXT("ShowArchiveName"), TryArchiveName);
 
-	if (IdxB < 0)
+	if (sAcv < 0)
 	{
-		NewIndex = Idx;
+		NewIndex = sIdx;
 		NewSubIndex = -1;
 	}
 	else
 	{
-		NewIndex = IdxB;
-		NewSubIndex = Idx;
+		NewIndex = sAcv;
+		NewSubIndex = sIdx;
 	}
 
 	ReadFileList(DestLists, Map);
@@ -1718,7 +1720,7 @@ LRESULT CMainForm::ProcessMessages(HWND hWnd, UINT message, WPARAM wParam, LPARA
 			break;
 
 		case WM_PAINT:
-			OnPaint();
+			OnPaint(false);
 			CallDefault = ShowingList;
 			break;
 
@@ -1895,7 +1897,7 @@ bool CMainForm::MainForm_KeyDown(WPARAM wParam, LPARAM lParam)
 		break;
 
 	case VK_F5:
-		ShowAbsoluteImage(ShowIndex, 0);
+		MnRefresh_Click();
 		break;
 
 	case VK_OEM_PLUS:
@@ -1956,10 +1958,7 @@ bool CMainForm::MainForm_KeyDown(WPARAM wParam, LPARAM lParam)
 		break;
 
 	case 'T':
-		if (SubKey == 0)
-			MnAlwaysTop_Click();
-		else if (SubKey == 2)
-			SortFileList(ESortType_NAME);
+		MnAlwaysTop_Click();
 		break;
 
 	case 'B':
@@ -1981,9 +1980,7 @@ bool CMainForm::MainForm_KeyDown(WPARAM wParam, LPARAM lParam)
 		break;
 	case 'R':
 		if (SubKey == 0)
-			ShowAbsoluteImage(ShowIndex, 0);
-		else if (SubKey == 2)
-			SortFileList(ESortType_RANDOM);
+			MnRefresh_Click();
 		break;
 
 	case 'X':
@@ -2145,10 +2142,7 @@ bool CMainForm::DisplayBox_KeyDown(WPARAM wParam, LPARAM lParam)
 		break;
 
 	case 'T':
-		if (SubKey == 0)
-			MnAlwaysTop_Click();
-		else if (SubKey == 2)
-			SortFileList(ESortType_NAME);
+		MnAlwaysTop_Click();
 		break;
 
 	case 'F':
@@ -2238,7 +2232,7 @@ bool CMainForm::ProcessAppCommand(LPARAM cmd, LPARAM uDevicem, LPARAM dwKeys)
 }
 
 // 再描画
-void CMainForm::OnPaint(void)
+void CMainForm::OnPaint(bool FullRefresh)
 {
 	if (EnableDraw > 0 || ShowingList == true)
 	{
@@ -2246,19 +2240,23 @@ void CMainForm::OnPaint(void)
 	}
 	BeginUpdate();
 	EnterCriticalSection(&CriticalSection);
-	int i;
 	PAINTSTRUCT ps;
-	HDC hdc = BeginPaint(hWindow, &ps);
-
+	HDC hDC;
+	if(FullRefresh == false)hDC = BeginPaint(hWindow, &ps);
+	int i;
 
 	if (Susie.Mode != EPluginMode_NONE) // 画像が描画されている場合
 	{
-		HDC hDC = GetDC(hWindow);
-		// 画像表示
-		int OldStretchMode = SetStretchBltMode(hDC, STRETCH_HALFTONE);
-		POINT p = {};
-		SetBrushOrgEx(hDC, 0, 0, &p);
+		if (AnimeRefresh == true)
+		{
+			if (Susie.AnimateUpDateFrame(EnableDropFrame) == false) // 次のフレームの準備をする
+			{
+				Susie.AnimePlaying = false;
+			}
+			AnimeRefresh = false;
+		}
 
+		// 画像表示
 		Gdiplus::Rect Src, Dest;
 		Gdiplus::Rect wRect = { WLeft, WTop, WWidth, WHeight };
 
@@ -2284,15 +2282,22 @@ void CMainForm::OnPaint(void)
 			offset = { -MLeft + FrameWidth, -MTop + FrameWidth };
 		}
 
-
 		GetTransRect(wRect, Src, Dest);
 		Dest.Offset(offset);
+
+		if (FullRefresh == true)hDC = GetDC(hWindow);
+		int OldStretchMode = SetStretchBltMode(hDC, STRETCH_HALFTONE);
+		POINT p = {};
+		SetBrushOrgEx(hDC, 0, 0, &p);
 
 		StretchDIBits(hDC,
 			Dest.X, Dest.Y, Dest.Width, Dest.Height,
 			Src.X, Susie.SrcRHeight - Src.GetBottom(), Src.Width, Src.Height,
 			Susie.pBmpData, Susie.pBmpInfo,
 			DIB_RGB_COLORS, SRCCOPY);
+
+		SetStretchBltMode(hDC, OldStretchMode);
+		if (FullRefresh == true)ReleaseDC(hWindow, hDC);
 
 		Gdiplus::Graphics g(hWindow);
 
@@ -2311,8 +2316,6 @@ void CMainForm::OnPaint(void)
 				fRect[i].Offset(offset);
 			}
 			g.FillRectangles(&brush, fRect, 4);
-
-			DeleteObject(&brush);
 		}
 
 		if (FullScreen == true)
@@ -2339,20 +2342,6 @@ void CMainForm::OnPaint(void)
 				}
 				g.FillRectangles(&brush, fRect, 4);
 			}
-			DeleteObject(&brush);
-		}
-
-
-		SetStretchBltMode(hDC, OldStretchMode);
-		ReleaseDC(hWindow, hDC);
-
-		if (AnimeRefresh == true)
-		{
-			if (Susie.AnimateUpDateFrame(EnableDropFrame) == false) // 次のフレームの準備をする
-			{
-				Susie.AnimePlaying = false;
-			}
-			AnimeRefresh = false;
 		}
 	}
 	else  // 画像が描画されていない場合
@@ -2394,7 +2383,6 @@ void CMainForm::OnPaint(void)
 			fRect.Offset(offset);
 			g.DrawRectangle(&pen, fRect);
 			g.FillRectangle(&brush, fRect.X + 1, fRect.Y + 1, fRect.Width - 1, fRect.Height - 1);
-			DeleteObject(&pen);
 		}
 
 		if (FrameWidth > 0)
@@ -2439,7 +2427,6 @@ void CMainForm::OnPaint(void)
 				g.FillRectangles(&brush, fRect, 4);
 			}
 		}
-		DeleteObject(&brush);
 	}
 
 	/*
@@ -2475,6 +2462,7 @@ void CMainForm::OnPaint(void)
 	DeleteObject(&brush);*/
 
 	if (SSIcon >= 0) DrawSSIcon();
+	if (FullRefresh == false)EndPaint(hWindow, &ps);
 	LeaveCriticalSection(&CriticalSection);
 	EndUpdate();
 }
@@ -2543,15 +2531,16 @@ bool CMainForm::GetTransRect(Gdiplus::Rect &wRect, Gdiplus::Rect &Src, Gdiplus::
 }
 
 // スライドショーアイコンを描画する
-void CMainForm::DrawSSIcon()
+void CMainForm::DrawSSIcon(void)
 {
 	if (WWidth < 20 || WHeight < 20) return;
+
 	Gdiplus::Graphics g(hWindow);
-	Gdiplus::Color bgColor(128, FullFillColor.GetR(), FullFillColor.GetG(), FullFillColor.GetB());
+	Gdiplus::Color bgColor(255, FullFillColor.GetR(), FullFillColor.GetG(), FullFillColor.GetB());
 	Pen pen(DrawColor, 1);
 	SolidBrush brush(DrawColor);
 	SolidBrush bgBrush(bgColor);
-	Point ofs(RWidth, RHeight);
+	Point ofs(RWidth + FrameWidth, RHeight + FrameWidth);
 
 	Gdiplus::Rect ri, ro, rb;
 	Gdiplus::Point p[3];
@@ -2626,7 +2615,7 @@ void CMainForm::EndUpdate(void)
 // フォームを再描画する
 void CMainForm::FormRefresh(void)
 {
-	if (EnableDraw == 0)SendMessage(hWindow, WM_PAINT, 0, 0);
+	if (EnableDraw == 0)InvalidateRect(hWindow, nullptr, FALSE);
 }
 
 
@@ -2897,7 +2886,6 @@ bool CMainForm::SyncWindow(void)
 	ClientRect = { Left, Top, Width, Height };
 
 	CheckRefreshBackBuffer();
-	FormRefresh();
 
 	if (WWidth > WHeight)
 		SizeRatio = (double)WWidth / Susie.ORotWidth;
@@ -4209,17 +4197,12 @@ void CMainForm::SetNewImageSize(void)
 			DownHeight = (int)ImageHeight;
 
 			SetWindowSize((int)ImageWidth, (int)ImageHeight, false);
-
-//			DownTop = CenterY - ImageHeight / 2;
-//			DownLeft = CenterX - ImageWidth / 2;
 		}
 	}
 	else
 	{
 		SetWindowSize((int)ImageWidth, (int)ImageHeight, true);
 	}
-
-	//	Holding = EEventButton_NONE;
 }
 
 
@@ -4873,7 +4856,12 @@ bool CMainForm::CheckGetLists(std::vector<CImageInfo> &DestLists, std::vector<st
 
 bool CMainForm::GetImageLists(std::wstring Src, std::vector<CImageInfo> &Dest, bool SubFolder, bool EnableFileMask, std::wstring FileMaskString) // c:\windows\dest\*.dll のような形式で Src は指定する
 {
+	static bool Flag = false;
+	if (Flag)return(false);
+
 	NoStayOnTop();
+
+	Flag = true;
 
 	if (EnableFileMask == false)
 	{
@@ -4889,6 +4877,8 @@ bool CMainForm::GetImageLists(std::wstring Src, std::vector<CImageInfo> &Dest, b
 
 	RestoreStayOnTop();
 
+	Flag = false;
+
 	return (true);
 }
 
@@ -4901,7 +4891,7 @@ bool CMainForm::AddFileList(std::vector<CImageInfo> &SrcLists, int Mode)
 	case 0:
 		ShowIndex = 0;
 		FileList.clear();
-		Susie.Clear(EPluginMode_ALL);
+		SusieClear(EPluginMode_ALL);
 
 		if (SrcLists.size() > 0)
 		{
@@ -5043,7 +5033,7 @@ bool CMainForm::DeleteFileInList(int i)
 			if (i == ShowIndex)
 			{
 				ShowIndex = -1;
-				Susie.Clear(EPluginMode_PICTURE);
+				SusieClear(EPluginMode_PICTURE);
 			}
 
 			int PreviousII = DisplayBox.SelectedIndex;
@@ -5084,7 +5074,7 @@ bool CMainForm::DeleteFileInList(int i)
 			}
 			else
 			{
-				Susie.Clear(EPluginMode_PICTURE);
+				SusieClear(EPluginMode_PICTURE);
 				ToggleShowList(EShowMode_LIST);
 			}
 		}
@@ -5326,6 +5316,16 @@ bool CMainForm::OpenArchiveMode(CImageInfo &SrcImageInfo, int SubIndex, int Dir,
 
 	ShowArchive = ShowIndex;
 
+	if (TryFileName != TEXT(""))
+	{
+		if ((*DisplayList)[SubIndex].FileName != TryFileName)
+		{
+			SubIndex = IndexOfImageInfos(DisplayList, TryFileName);
+			if (SubIndex < 0)SubIndex = 0;
+		}
+		TryFileName = TEXT("");
+	}
+
 	// 表示するファイルがなければ終了
 	if (DisplayList->size() == 0)
 	{
@@ -5367,7 +5367,7 @@ bool CMainForm::CloseArchiveMode(void)
 	if (DisplayList->size() == 0)
 		FileList.erase(FileList.begin() + ShowArchive);
 
-	Susie.Clear(EPluginMode_ALL);
+	SusieClear(EPluginMode_ALL);
 	DisplayList = &FileList;
 	ShowIndex = ShowArchive;
 
@@ -5532,7 +5532,6 @@ CMainForm::ELoadFileResult CMainForm::LoadFile(int Index, int SubIndex, int Dir,
 	SetNewImageSize();
 
 	EndUpdate();
-	FormRefresh();
 
 	if (Susie.Animate != EAnimationType_NONE)
 		BeginAnimeThread();
@@ -5651,6 +5650,7 @@ CMainForm::EShowAbsoluteImageResult CMainForm::ShowAbsoluteImage(int Index, int 
 			SSTimer.Enabled(SlideShow);
 			SetImageFileName();
 			FileLoading--;
+			FormRefresh();
 			return (EShowAbsoluteImageResult_PASSED);
 			// MIV_SI_OPENARCHIVE:アーカイブファイルを開いた
 		case ELoadFileResult_OPENARCHIVE:
@@ -5660,6 +5660,7 @@ CMainForm::EShowAbsoluteImageResult CMainForm::ShowAbsoluteImage(int Index, int 
 			}
 			SSTimer.Enabled(SlideShow);
 			FileLoading--;
+			FormRefresh();
 			return (EShowAbsoluteImageResult_OPENARCHIVE);
 
 			// MIV_SI_NOARCHIVE:アーカイブファイルがみつからない
@@ -5705,7 +5706,7 @@ CMainForm::EShowAbsoluteImageResult CMainForm::ShowAbsoluteImage(int Index, int 
 
 	ShowIndex = -1;
 	//	Hint = "";
-	Susie.Clear(EPluginMode_ALL);
+	SusieClear(EPluginMode_ALL);
 	FormRefresh();
 
 	if (Result == ELoadFileResult_OK)
@@ -5763,7 +5764,7 @@ void CMainForm::AnimeThread(void)
 	while (Susie.AnimePlaying == true)
 	{
 		// アニメの処理
-		if (Susie.Animate != EAnimationType_NONE || AnimePaused == true)
+		if ((Susie.Animate != EAnimationType_NONE || AnimePaused == true) && Susie.AnimePlaying == true)
 		{
 			int WaitLeft; // フレームの更新が間に合わなかったときに間引いたほうがいい？
 			WaitLeft = Susie.DelayTime;
@@ -5773,14 +5774,21 @@ void CMainForm::AnimeThread(void)
 				Sleep(MIN_LOOP);
 				WaitLeft -= MIN_LOOP;
 				if (AnimePaused == true)break;
+				if (Susie.AnimePlaying == false)break;
 			}
-			Sleep(WaitLeft);
+			if (Susie.AnimePlaying == false)break;
 
-			EnterCriticalSection(&CriticalSection);
-			AnimeRefresh = true;
-			LeaveCriticalSection(&CriticalSection);
-			OnPaint();
+			if (AnimePaused == false)
+			{
+				Sleep(WaitLeft);
 
+				EnterCriticalSection(&CriticalSection);
+				AnimeRefresh = true;
+				LeaveCriticalSection(&CriticalSection);
+
+				OnPaint(true);
+			}
+				
 			{
 				bool WaitRestart = AnimePaused;
 				AnimeTimerPaused = true;
@@ -5797,6 +5805,12 @@ void CMainForm::AnimeThread(void)
 	EnterCriticalSection(&CriticalSection);
 	AnimeRefresh = false;
 	LeaveCriticalSection(&CriticalSection);
+}
+
+void CMainForm::SusieClear(EPluginMode Mode)
+{
+	if(Mode & EPluginMode_PICTURE)EndAnimeThread();
+	Susie.Clear(Mode);
 }
 
 void CMainForm::BeginAnimeThread(void)
@@ -6110,7 +6124,25 @@ void CMainForm::MnSlideShow_Click(int Mode) // 0:オフ 1:オン 2:トグル
 
 void CMainForm::MnRefresh_Click(void)
 {
-	ShowAbsoluteImage(ShowIndex, 0);
+	if (InArchive)
+	{
+		int sIdx = ShowIndex, sAcv = ShowArchive;
+		TryFileName = FileList[sAcv].ImageInfoList[sIdx].FileName;
+		FileList[sAcv].ImageInfoList.clear();
+
+		SusieClear(EPluginMode_ALL);
+		DisplayList = &FileList;
+		ShowIndex = ShowArchive;
+
+		ShowArchive = -1;
+		InArchive = false;
+
+		ShowAbsoluteImage(sAcv, sIdx, 0, true);
+	}
+	else
+	{
+		ShowAbsoluteImage(ShowIndex, 0);
+	}
 }
 
 void CMainForm::MnLock_Click(void)
@@ -6290,7 +6322,7 @@ void CMainForm::MnShowInformation_Click(void)
 				Mes += TEXT("\nLoop : Infinite");
 			else
 				Mes += TEXT("\nLoop : ") + std::to_wstring(Susie.LoopCount);
-//			Mes += TEXT("\nPrevious Loop Drop Frame : ") + std::to_wstring(Susie.DropFrame);
+			Mes += TEXT("\nPrevious Loop Drop Frame : ") + std::to_wstring(Susie.DropFrame);
 		}
 
 	}
@@ -6619,6 +6651,7 @@ void CMainForm::MnBackGroundColor_Click(void)
 	if (ColorDialog.ShowDialog(hWindow) == IDOK)
 	{
 		FullFillColor = ColorDialog.GetColorGdip();
+		Susie.BGColor = FullFillColor;
 		DrawColor = GetDrawColor(FullFillColor);
 		FormRefresh();
 	}
@@ -7038,13 +7071,11 @@ void CMainForm::CursorTimer_Tick(void)
 		if (SSIcon < 2)
 		{
 			SSIcon++;
-			FormRefresh();
-
 		}
 		else
 		{
 			SSIcon = -1;
-			FormRefresh();
+			InvalidateRect(hWindow, nullptr, FALSE);
 		}
 	}
 }

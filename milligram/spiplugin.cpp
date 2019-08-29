@@ -2,7 +2,7 @@
 #include "spiplugin.h"
 #include "acfc.h"
 
-#define IGNORE_FILEMINSIZE 256
+#define IGNORE_FILEMINSIZE 512
 
 namespace milligram
 {
@@ -26,7 +26,7 @@ namespace milligram
 
 	void CSpiLoader::Init(HWND hWndNewOwner, FARPROC aProgressCallBack)
 	{
-		windowHandle = hWndNewOwner;
+		hWindow = hWndNewOwner;
 		ProgressCallback = aProgressCallBack;
 		ErrorFlag = true;
 
@@ -512,7 +512,7 @@ namespace milligram
 				OrgHeight = pInfo->bmiHeader.biHeight;
 
 				BitmapGDIP = new Gdiplus::Bitmap(pInfo, pBmp);
-				BitmapGDIP->GetHBITMAP(0, &hBitmap);
+				BitmapGDIP->GetHBITMAP(BGColor, &hBitmap);
 
 				GlobalUnlock(pBmp);
 				GlobalUnlock(pInfo);
@@ -675,8 +675,7 @@ namespace milligram
 			OrgWidth = ImageGDIP->GetWidth();
 			OrgHeight = ImageGDIP->GetHeight();
 
-			BitmapGDIP = CreateBMPFromImage(ImageGDIP);
-			BitmapGDIP->GetHBITMAP(0, &hBitmap);
+			BitmapGDIP = CreateBMPFromImage(ImageGDIP, &hBitmap);
 
 			Mode = (EPluginMode)(Mode & (EPluginMode_ALL ^ EPluginMode_PICTURE));
 			Mode = (EPluginMode)(Mode | EPluginMode_GDIP);
@@ -716,7 +715,7 @@ namespace milligram
 				OrgHeight = pInfo->bmiHeader.biHeight;
 
 				BitmapGDIP = new Gdiplus::Bitmap(pInfo, pBmp);
-				BitmapGDIP->GetHBITMAP(0, &hBitmap);
+				BitmapGDIP->GetHBITMAP(BGColor, &hBitmap);
 
 				GlobalUnlock(pBmp);
 				GlobalUnlock(pInfo);
@@ -772,25 +771,22 @@ namespace milligram
 		return (true);
 	}
 
-	Gdiplus::Bitmap* CSpiLoader::CreateBMPFromImage(Gdiplus::Image *Src)
+	Gdiplus::Bitmap* CSpiLoader::CreateBMPFromImage(Gdiplus::Image *Src, HBITMAP *hdest)
 	{
 		Gdiplus::Bitmap *dest = new Gdiplus::Bitmap(Src->GetWidth(), Src->GetHeight());
 
-		HBITMAP hdest;
-		dest->GetHBITMAP(0, &hdest);
-
 		HDC hdc = CreateCompatibleDC(nullptr);
-		HBITMAP hdc_hdest = (HBITMAP)SelectObject(hdc, hdest);
+		HBITMAP hdc_hdest = (HBITMAP)SelectObject(hdc, *hdest);
 
 		Graphics g(dest);
 		g.DrawImage(Src, 0, 0, Src->GetWidth(), Src->GetHeight());
-		g.ReleaseHDC(hdc);
 
 		SelectObject(hdc, hdc_hdest);
-		ReleaseDC(nullptr, hdc);
 
-		DeleteDC(hdc);
-		DeleteObject(hdest);
+		DeleteObject(hdc);
+		DeleteObject(hdc_hdest);
+
+		dest->GetHBITMAP(BGColor, hdest);
 
 		return(dest);
 	}
@@ -971,7 +967,7 @@ namespace milligram
 			HBITMAP sDC_Bitmap = (HBITMAP)SelectObject(sDC, hBitmap);
 
 			// ì]ëóêÊÇÃèÄîı
-			HDC dDC = CreateCompatibleDC(sDC);
+			HDC dDC = CreateCompatibleDC(nullptr);
 			HBITMAP dDC_Bitmap = (HBITMAP)SelectObject(dDC, hBmpData);
 
 			// ì]ëó
@@ -984,27 +980,24 @@ namespace milligram
 				0, 0, OrgWidth, OrgHeight,
 				nullptr, 0, 0);
 
-			SetStretchBltMode(dDC, OldStretchMode);
-
 			int value;
 			if (result == false)
-			{
 				value = GetLastError();
-				SelectObject(sDC, sDC_Bitmap);
-				SelectObject(dDC, dDC_Bitmap);
-				DeleteDC(sDC);
-				DeleteDC(dDC);
-				return (false);
-			}
 
 			SetStretchBltMode(dDC, OldStretchMode);
 
 			SelectObject(sDC, sDC_Bitmap);
 			SelectObject(dDC, dDC_Bitmap);
+
+			DeleteObject(sDC_Bitmap);
+			DeleteObject(dDC_Bitmap);
+
 			DeleteDC(sDC);
 			DeleteDC(dDC);
 
 			MustBackBufferTrans = false;
+
+			if (result == false)return(false);
 
 			return (true);
 		}
@@ -1022,17 +1015,20 @@ namespace milligram
 			HBITMAP sDC_Bitmap = (HBITMAP)SelectObject(sDC, hBitmap);
 
 			// ì]ëóêÊÇÃèÄîı
-			HDC mDC = CreateCompatibleDC(sDC);
+			HDC mDC = CreateCompatibleDC(nullptr);
 			HBITMAP mDC_Bitmap = (HBITMAP)SelectObject(mDC, hBmpRData);
 
 			// ì]ëó
-			SetStretchBltMode(mDC, STRETCH_HALFTONE);
+			int OldStretchMode = SetStretchBltMode(mDC, STRETCH_HALFTONE);
 			POINT p = {};
 			SetBrushOrgEx(mDC, 0, 0, &p);
 
 			StretchBlt(mDC, 0, 0, BufWidth, BufHeight,
 				       sDC, 0, 0, OrgWidth, OrgHeight,
 						SRCCOPY);
+
+			SetStretchBltMode(mDC, OldStretchMode);
+
 
 			// ì]ëóêÊÇèÄîıÇ∑ÇÈ
 			switch (Rotate)
@@ -1060,18 +1056,22 @@ namespace milligram
 			}
 
 			// ì]ëóêÊÇÃèÄîı
-			HDC dDC = CreateCompatibleDC(sDC);
+			HDC dDC = CreateCompatibleDC(nullptr);
 			HBITMAP dDC_Bitmap = (HBITMAP)SelectObject(dDC, hBmpData);
 
 			// ì]ëó
-			int OldStretchMode = SetStretchBltMode(dDC, STRETCH_HALFTONE);
+			OldStretchMode = SetStretchBltMode(dDC, STRETCH_HALFTONE);
 			p = {};
-			SetBrushOrgEx(mDC, 0, 0, &p);
+			SetBrushOrgEx(dDC, 0, 0, &p);
 
 			bool result = PlgBlt(dDC, points,
 				mDC,
 				0, 0, BufWidth, BufHeight,
 				nullptr, 0, 0);
+
+			int value;
+			if (result == false)
+				value = GetLastError();
 
 			SetStretchBltMode(dDC, OldStretchMode);
 
@@ -1079,12 +1079,18 @@ namespace milligram
 			SelectObject(mDC, mDC_Bitmap);
 			SelectObject(dDC, dDC_Bitmap);
 
+			DeleteObject(sDC_Bitmap);
+			DeleteObject(mDC_Bitmap);
+			DeleteObject(dDC_Bitmap);
+
 			DeleteDC(sDC);
 			DeleteDC(mDC);
 			DeleteDC(dDC);
-		}
 
-		MustBackBufferTrans = false;
+			MustBackBufferTrans = false;
+
+			if (result == false)return(false);
+		}
 
 		return (true);
 	}
@@ -1151,7 +1157,6 @@ namespace milligram
 
 	bool CSpiLoader::GIFAnimateUpDateFrame(bool FrameSkip)
 	{
-		bool lockTaken = false;
 		bool Result = true;
 
 		FrameIndex++;
@@ -1167,8 +1172,6 @@ namespace milligram
 			FrameIndex = 0;
 		}
 
-		DeleteObject(hBitmap);
-
 		NowTGT = timeGetTime();
 
 		int D;
@@ -1179,7 +1182,11 @@ namespace milligram
 
 		PreTGT = NowTGT;
 
+		if (FrameIndex == 3)
+			FrameIndex = FrameIndex;
+
 		DelayTime = Delay[FrameIndex] - D;
+
 		if (FrameSkip == true)
 		{
 			while (DelayTime < 0)
@@ -1210,8 +1217,7 @@ namespace milligram
 
 		if (AllFrame)
 		{
-			DeleteObject(hBitmap);
-			GIFBitmapGDIP[FrameIndex]->GetHBITMAP(0, &hBitmap);
+			hBitmap = GIFhBitmapGDIP[FrameIndex];
 		}
 		else
 		{
@@ -1219,9 +1225,7 @@ namespace milligram
 			ImageGDIP->SelectActiveFrame(&Guid, FrameIndex);
 			DeleteObject(hBitmap);
 			delete BitmapGDIP;
-			BitmapGDIP = CreateBMPFromImage(ImageGDIP);
-
-			BitmapGDIP->GetHBITMAP(0, &hBitmap);
+			BitmapGDIP = CreateBMPFromImage(ImageGDIP, &hBitmap);
 		}
 
 		TransBackBuffer();
@@ -1334,6 +1338,7 @@ namespace milligram
 				DropCount--;
 				memcpy(pWebPBuf, buf, 4 * WebPWidth * WebPHeight);
 				DelayTime = -D;
+
 			}
 			else
 			{
@@ -1462,7 +1467,7 @@ namespace milligram
 
 			for (i = FrameCount - 1; i > 0; i--)
 				Delay[i] -= Delay[i - 1];
-			//		WebPAnimDecoderReset(WebPDecoder);
+
 			DelayTime = Delay[0];
 		}
 		else
@@ -1662,7 +1667,7 @@ namespace milligram
 		pItem = (PropertyItem*)malloc(TotalBuffer);
 		ImageGDIP->GetPropertyItem(PropertyTagLoopCount, TotalBuffer, pItem);
 
-		LoopCount = (int)((short int *)pItem[0].value)[0];
+		LoopCount = (int)*((short int *)pItem->value);
 		free(pItem);
 
 		Delay = new int[FrameCount];
@@ -1677,6 +1682,7 @@ namespace milligram
 			Delay[i] *= 10;
 			if (Delay[i] == 0) Delay[i] = 100;
 		}
+
 		free(pItem);
 		
 		LoopIndex = 0;
@@ -1695,12 +1701,15 @@ namespace milligram
 
 		if (AllFrame == true)
 		{
+			DeleteObject(hBitmap); // 0 ÉtÉåÅ[ÉÄñ⁄Ç∆èdï°Ç∑ÇÈÇÃÇ≈çÌèú
 			GIFBitmapGDIP = new Bitmap *[FrameCount];
+			GIFhBitmapGDIP = new HBITMAP[FrameCount];
 			for (int i = 0; i < FrameCount; i++)
 			{
 				ImageGDIP->SelectActiveFrame(&Guid, i);
-				GIFBitmapGDIP[i] = CreateBMPFromImage(ImageGDIP);
+				GIFBitmapGDIP[i] = CreateBMPFromImage(ImageGDIP, &GIFhBitmapGDIP[i]);
 			}
+			hBitmap = GIFhBitmapGDIP[0];
 		}
 		else
 		{
@@ -1874,9 +1883,12 @@ namespace milligram
 					for (int i = 0; i < FrameCount; i++)
 					{
 						delete GIFBitmapGDIP[i];
+						DeleteObject(GIFhBitmapGDIP[i]);
 					}
 					delete[] GIFBitmapGDIP;
+					delete[] GIFhBitmapGDIP;
 					GIFBitmapGDIP = nullptr;
+					GIFhBitmapGDIP = nullptr;
 				}
 				Animate = EAnimationType_NONE;
 			}
@@ -2097,7 +2109,7 @@ namespace milligram
 		ReleaseDC(nullptr, hdc);
 		DeleteDC(hdc);
 
-		OpenClipboard(windowHandle);
+		OpenClipboard(hWindow);
 		EmptyClipboard();
 		SetClipboardData(CF_BITMAP, hBmp);
 		CloseClipboard();

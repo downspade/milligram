@@ -22,23 +22,23 @@ public:
 	void Init(HWND hWnd);
 
 private:
-	std::wstring RootPath;
-	bool SubFolder;
-	std::wstring FileMaskString;
+	std::wstring RootPath = TEXT("");
+	bool SubFolder = false;
+	std::wstring FileMaskString = TEXT("");
 
 	std::set<std::wstring>SearchedFolder;
 	std::set<std::wstring>FoundFiles;
 
 	std::vector<CImageInfo> Dest;
 
-	std::wstring SearchingFile;
+	std::wstring SearchingFile = TEXT("");
 
-	DWORD ThreadID;
+	DWORD ThreadID = 0;
 	CRITICAL_SECTION CriticalSection = {};
-	HANDLE hThread;
-	bool SearchEnd;
+	HANDLE hThread = nullptr;
+	bool SearchEnd = false;
 
-	HWND hStaticText;
+	HWND hStaticText = nullptr;
 
 	acfc::CTimer LoopTimer;
 };
