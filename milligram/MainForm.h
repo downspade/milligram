@@ -8,7 +8,7 @@
 #include "acfc.h"
 
 #define MAX_LOADSTRING 100
-#define MIV_SMALLESTWINDOWSIZE 200
+#define MIV_SMALLESTLISTWINDOW 200
 #define CULTURESTR "en-US"
 #define MIN_LOOP 50
 #define MIN_WAIT 10
@@ -152,7 +152,7 @@ private:
 
 	//---------------------------------------------------------
 
-	CSpiLoader Susie;
+	CSpiLoader *Susie;
 
 	//---------------------------------------------------------
 
@@ -229,6 +229,7 @@ private:
 	std::wstring ShowFileName = TEXT("");// 表示中のファイル名
 	std::wstring ShowArchiveName = TEXT(""); // 表示中のアーカイブ名
 	std::wstring OpeningFileName = TEXT(""); // 表示中のファイル名（実体）アーカイブファイルならアーカイブファイル名
+	std::wstring mflFileName = TEXT(""); // 読み込んだ mfl ファイル
 	bool AlwaysTop = false;           // 常に手前に表示
 	bool ShowingList = false;         // ファイルリスト表示中かどうか
 	bool PreShowingList = false;         // 前回終了時にファイルリスト表示中かどうか
@@ -299,6 +300,8 @@ private:
 	//-----------------------------------------------------------------------------
 
 	int StopCount = 0;
+	int FileSearching = 0;
+	int ShowingDialog = 0;
 	int FileLoading = 0;
 	time_t LoadStart = 0;
 	int LoadState = 0;
@@ -386,6 +389,9 @@ public:
 
 	bool Initialize(HINSTANCE hInstance, int nCmdShow, LPWSTR lpCmdLine); // フォームを作る
 	void CheckExistsFileListCorrect(void);
+	void ShowIndexRangeInFileList(void);
+	void ShowArchiveRangeInFileList(void);
+	void ShowArchiveRangeInArchiveList(void);
 	bool CreateForm(int nCmdShow); // フォームの初期化など
 
 	ATOM MyRegisterClass(void);
@@ -396,7 +402,7 @@ public:
 
 	Gdiplus::Color GetDrawColor(Gdiplus::Color color);
 
-	void CreateFromMessag(HWND hwnd, LPCREATESTRUCT lp);// フォームが作られたときに呼ばれる
+	void CreateFromMessage(HWND hwnd, LPCREATESTRUCT lp);// フォームが作られたときに呼ばれる
 	void CreateDisplayBox(HWND hwnd, LPCREATESTRUCT lp); // ファイルを表示するリストを作成する
 	
 	void CloseFromMessage(void);
@@ -416,7 +422,7 @@ public:
 	__time64_t GetCreationTime(std::wstring FileName);
 
 	bool SaveFileList(std::wstring FileName); // ファイルリストを保存する
-	bool LoadFileList(std::wstring FileName, std::vector<CImageInfo> &DestLists, int &NewIndex, int &NewSubIndex);
+	bool LoadFileList(std::wstring FileName, std::vector<CImageInfo> &DestLists, int &NewIndex, int &NewSubIndex, std::wstring &sFileName, std::wstring &sArchiveName);
 	bool CreateFileList(std::wstring &sb);
 	bool ReadFileList(std::vector<CImageInfo>& DestSL, std::map<std::wstring, std::wstring>& Map);
 	
@@ -587,11 +593,11 @@ public:
 	
 	// ファイルを開く
 	
-	bool OpenFiles(std::vector<std::wstring> &SrcLists);
-	bool OpenFiles(std::vector<std::wstring> &SrcLists, std::wstring SelectedFile, int Offset, bool AddMode);
-	bool CheckGetLists(std::vector<CImageInfo>& DestLists, std::vector<std::wstring>& DropLists, int &NewIdx, int &NewSubIdx);
-	bool GetImageLists(std::wstring Src, std::vector<CImageInfo>& Dest, bool SubFolder, bool EnableFileMask, std::wstring FileMaskString);
-	bool AddFileList(std::vector<CImageInfo>& SrcLists, int Mode);
+	bool OpenFiles(std::vector<std::wstring> &SrcList);
+	bool OpenFiles(std::vector<std::wstring> &SrcList, std::wstring SelectedFile, int Offset, bool AddMode);
+	bool CheckGetList(std::vector<CImageInfo>& DestList, std::vector<std::wstring>& DropList, int Dir, int & NewIdx, int & NewSubIdx, std::wstring & LoadedmflFile);
+	bool GetImageList(std::wstring Src, std::vector<CImageInfo>& Dest, bool SubFolder, bool EnableFileMask, std::wstring FileMaskString);
+	bool AddFileList(std::vector<CImageInfo>& SrcList, int Mode);
 	bool DeleteFileList(int DeleteMode);
 	
 	// ファイルリスト操作
@@ -605,6 +611,7 @@ public:
 	bool CloseArchiveMode(void);
 
 	void ToggleShowList(EShowMode Mode);
+	void ToggleShowList(EShowMode Mode, int Dir);
 
 	ELoadFileResult LoadFile(int Index, int SubIndex, int Dir, bool MustShowImage);
 
@@ -719,4 +726,4 @@ public:
 
 };
 
-
+extern CMainForm *MainForm;

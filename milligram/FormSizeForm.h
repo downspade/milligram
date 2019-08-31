@@ -48,3 +48,5 @@ private:
 	bool SuspendUpdate;
 
 };
+
+extern CFormSizeForm *FormSizeForm;

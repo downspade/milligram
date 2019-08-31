@@ -1476,6 +1476,8 @@ namespace acfc
 		BOOL result = GetOpenFileName(&ofn);
 		delete ftr;
 
+		if (result == false)return(false);
+
 		GetFiles(FileNames);
 		if (FileNames.size() > 0)
 			FileName = FileNames[0];
@@ -1542,7 +1544,6 @@ namespace acfc
 
 		if (Overwrite) ofn.Flags |= OFN_OVERWRITEPROMPT;
 
-
 		TCHAR *ftr = new TCHAR[Filter.length() + 2];
 
 		int i = 0;
@@ -1564,6 +1565,8 @@ namespace acfc
 		BOOL result = GetSaveFileName(&ofn);
 
 		delete ftr;
+
+		if (result == false)return(false);
 
 		FileName = szFile;
 

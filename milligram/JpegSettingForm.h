@@ -34,3 +34,5 @@ private:
 	bool SuspendUpdate;
 
 };
+
+extern CJpegSettingForm *JpegSettingForm;

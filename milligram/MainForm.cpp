@@ -11,10 +11,6 @@
 //---------------------------------------------------------------------------------------------------
 
 CMainForm *MainForm = nullptr;
-extern CInputForm *InputForm;
-extern CFormSizeForm *FormSizeForm;
-extern CJpegSettingForm *JpegSettingForm;
-extern CProgressForm *ProgressForm;
 
 //---------------------------------------------------------------------------------------------------
 
@@ -139,6 +135,8 @@ LRESULT CMainForm::SpiProgressCallBack(int nNum, int nDenom, long lData)
 
 CMainForm::CMainForm(void)
 {
+	Susie = new CSpiLoader();
+
 	DisplayList = &FileList;
 	InitializeCriticalSection(&CriticalSection);
 }
@@ -147,6 +145,7 @@ CMainForm::~CMainForm(void)
 {
 	DeleteObject(hBGBrush);
 	DeleteCriticalSection(&CriticalSection);
+	delete Susie;
 }
 
 void CMainForm::Close(void)
@@ -231,10 +230,10 @@ bool CMainForm::Initialize(HINSTANCE hInstance, int nCmdShow, LPWSTR lpCmdLine)
 
 	if (!CreateForm(nCmdShow))return (false); // é¿ç€Ç…ÉtÉHÅ[ÉÄÇçÏê¨
 
-	Susie.Init(hWindow, (FARPROC)ProgressCallback);
-	Susie.FormHandle = hWindow;
-	Susie.InitSize(200, 200);
-	Susie.CriticalSection = &CriticalSection;
+	Susie->Init(hWindow, (FARPROC)ProgressCallback);
+	Susie->FormHandle = hWindow;
+	Susie->InitSize(200, 200);
+	Susie->CriticalSection = &CriticalSection;
 
 	// É_ÉCÉAÉçÉOÇÃèÄîı
 	PrepareDialog();
@@ -276,7 +275,7 @@ bool CMainForm::Initialize(HINSTANCE hInstance, int nCmdShow, LPWSTR lpCmdLine)
 	if (PluginPathes.size() == 0)
 		PluginPathes.push_back(acfc::GetFolderName(ExeFileName));
 
-	Susie.SetPluginPathes(PluginPathes);      // SPI path set
+	Susie->SetPluginPathes(PluginPathes);      // SPI path set
 
 	if (CmdLine)
 	{
@@ -313,8 +312,8 @@ bool CMainForm::Initialize(HINSTANCE hInstance, int nCmdShow, LPWSTR lpCmdLine)
 	}
 	else
 	{
-		ShowIndex = -1;
-		ShowArchive = -1;
+	ShowIndex = -1;
+	ShowArchive = -1;
 	}
 
 	if (ShowIndex < 0)
@@ -343,14 +342,14 @@ bool CMainForm::Initialize(HINSTANCE hInstance, int nCmdShow, LPWSTR lpCmdLine)
 		else
 			WTop = CenterY - WHeight / 2;
 
-		SetCenter(WLeft + WWidth / 2, WTop + WHeight / 2);
+		//		SetCenter(WLeft + WWidth / 2, WTop + WHeight / 2);
 		SyncWindow();
 	}
 
 	// äeéÌèâä˙âªÇÇ∑ÇÈ
 	DrawColor = GetDrawColor(FullFillColor);
 
-	Susie.BGColor = FullFillColor;
+	Susie->BGColor = FullFillColor;
 
 	// ÉÅÉjÉÖÅ[ÇèCê≥
 	SyncMenuChecked();
@@ -381,52 +380,108 @@ void CMainForm::CheckExistsFileListCorrect(void)
 
 	if (ShowArchive >= 0) // ÉAÅ[ÉJÉCÉuÉtÉ@ÉCÉãíÜÇÃÉtÉ@ÉCÉãÇï\é¶Ç∑ÇÈèÍçá
 	{
-		if (ShowArchive >= (int)FileList.size() || acfc::FileExists(FileList[ShowArchive].FileName) == false)
+		if (TryArchiveName != TEXT(""))
 		{
-			ShowIndex = 0;
-			ShowArchive = -1;
-		}
-		else		
-		{
-			if (FileList[ShowArchive].FileName != TryArchiveName)
+			if (acfc::FileExists(TryArchiveName) == false)
 			{
-				ShowArchive = IndexOfImageInfos(&FileList, TryArchiveName);
+				ShowIndex = ShowArchive; ShowArchive = -1;
+				ShowIndexRangeInFileList();
 			}
-
-			if (ShowArchive >= 0)
+			else
 			{
-				if ((int)FileList[ShowArchive].ImageInfoList.size() <= ShowIndex || FileList[ShowArchive].ImageInfoList[ShowIndex].FileName != TryFileName)
+				if (FileList[ShowArchive].FileName != TryArchiveName)
 				{
-					ShowIndex = IndexOfImageInfos(&(FileList[ShowArchive].ImageInfoList), TryFileName);
+					int sa;
+					sa = IndexOfImageInfos(&FileList, TryArchiveName);
+					if (sa >= 0)ShowArchive = sa;
+				}
+
+				if (ShowArchive >= 0 && ShowArchive < (int)FileList.size())
+				{
+					if (TryFileName != TEXT(""))
+					{
+						if (ShowIndex >= 0 && (int)FileList[ShowArchive].ImageInfoList.size() <= ShowIndex || FileList[ShowArchive].ImageInfoList[ShowIndex].FileName != TryFileName)
+						{
+							int si = IndexOfImageInfos(&(FileList[ShowArchive].ImageInfoList), TryFileName);
+							if (si >= 0)ShowIndex = si;
+						}
+					}
+					ShowArchiveRangeInArchiveList();
+				}
+				else
+				{
+					ShowIndex = ShowArchive; ShowArchive = -1;
+					ShowIndexRangeInFileList();
 				}
 			}
-
-			if (ShowIndex < 0)
-			{
-				ShowIndex = 0;
-			}
-		}
-	}
-	
-	if (ShowArchive < 0 && ShowIndex >= 0)
-	{
-		if (ShowIndex >= (int)FileList.size() || acfc::FileExists(FileList[ShowIndex].FileName) == false)
-		{
-			ShowIndex = 0;
 		}
 		else
 		{
-			if (FileList[ShowIndex].FileName != TryFileName)
+			if(ShowArchive >= (int)FileList.size())
+				ShowArchive = (int)FileList.size() - 1;
+
+			if (FileList[ShowArchive].ImageInfoList.size() == 0)
 			{
-				ShowIndex = IndexOfImageInfos(&FileList, TryFileName);
-				if (ShowIndex < 0)ShowIndex = 0;
+				ShowIndex = ShowArchive; ShowArchive = -1;
+				ShowIndexRangeInFileList();
+			}
+			else
+			{
+				ShowArchiveRangeInArchiveList();
 			}
 		}
-
+	}
+	else
+	{
+		if (TryFileName != TEXT(""))
+		{
+			if (acfc::FileExists(TryFileName) == false)
+			{
+				ShowIndexRangeInFileList();
+			}
+			else if (ShowIndex >= 0 && ShowIndex < (int)FileList.size())
+			{
+				if (FileList[ShowIndex].FileName != TryFileName)
+				{
+					int si;
+					si = IndexOfImageInfos(&FileList, TryFileName);
+					if (si >= 0)
+						ShowIndex = si;
+					else
+						ShowIndexRangeInFileList();
+				}
+			}
+			else
+			{
+				ShowIndexRangeInFileList();
+			}
+		}
+		else
+		{
+			ShowIndexRangeInFileList();
+		}
 	}
 
 	TryFileName = (TEXT(""));
 	TryArchiveName = (TEXT(""));
+}
+
+void CMainForm::ShowIndexRangeInFileList(void)
+{
+	while (ShowIndex < 0)ShowIndex += (int)FileList.size();
+	while (ShowIndex >= (int)FileList.size())ShowIndex -= (int)FileList.size();
+}
+
+void CMainForm::ShowArchiveRangeInFileList(void)
+{
+	while (ShowArchive < 0)ShowArchive += (int)FileList.size();
+	while (ShowArchive >= (int)FileList.size())ShowArchive -= (int)FileList.size();
+}
+
+void CMainForm::ShowArchiveRangeInArchiveList(void)
+{
+	while (ShowIndex < 0)ShowIndex += (int)FileList[ShowArchive].ImageInfoList.size();
+	while (ShowArchive >= (int)FileList[ShowArchive].ImageInfoList.size())ShowArchive -= (int)FileList[ShowArchive].ImageInfoList.size();
 }
 
 // ÉtÉHÅ[ÉÄÇÃèâä˙âªÇ»Ç«
@@ -565,7 +620,7 @@ void CMainForm::LoadResource(void)
 }
 
 // ÉtÉHÅ[ÉÄÇ™çÏÇÁÇÍÇΩÇ∆Ç´Ç…åƒÇŒÇÍÇÈ
-void CMainForm::CreateFromMessag(HWND hwnd, LPCREATESTRUCT lp)
+void CMainForm::CreateFromMessage(HWND hwnd, LPCREATESTRUCT lp)
 {
 	CreateDisplayBox(hwnd, lp);
 }
@@ -583,7 +638,7 @@ void CMainForm::CloseFromMessage(void)
 
 	if (NotSaveIni == false) SaveIni(IniParamName);
 
-	Susie.Release();
+	Susie->Release();
 }
 
 
@@ -719,7 +774,7 @@ bool CMainForm::LoadIni(std::wstring IniName, bool CmdLine)
 
 	RotateValue = acfc::GetIntegerValue(Map, TEXT("RotateValue"), RotateValue, 0, 0);
 	FixRotate = acfc::GetBoolValue(Map, TEXT("FixRotate"), false);
-	Susie.FixRotate = FixRotate;
+	Susie->FixRotate = FixRotate;
 
 	KeepDiagonalLength = acfc::GetIntegerValue(Map, TEXT("DiagonalLength"), KeepDiagonalLength, 0, 0);
 	FixDiagonalLength = acfc::GetBoolValue(Map, TEXT("FixDiagonalLength"), false);
@@ -769,6 +824,8 @@ bool CMainForm::LoadIni(std::wstring IniName, bool CmdLine)
 
 		TryFileName = acfc::GetStringValue(Map, TEXT("ShowFileName"), TryFileName);
 		TryArchiveName = acfc::GetStringValue(Map, TEXT("ShowArchiveName"), TryArchiveName);
+
+		mflFileName = acfc::GetStringValue(Map, TEXT("mflFileName"), mflFileName);
 	}
 
 	for (i = 0; i < 16; i++)
@@ -795,7 +852,7 @@ bool CMainForm::LoadIni(std::wstring IniName, bool CmdLine)
 		i++;
 	}
 
-	Susie.InternalLoader = acfc::GetStringValue(Map, TEXT("InternalLoader"), Susie.InternalLoader);
+	Susie->InternalLoader = acfc::GetStringValue(Map, TEXT("InternalLoader"), Susie->InternalLoader);
 
 	i = 0;
 	while (true)
@@ -888,6 +945,8 @@ bool CMainForm::SaveIni(std::wstring IniName)
 
 		sb.append(TEXT("ShowFileName=") + ShowFileName + TEXT("\n"));
 		sb.append(TEXT("ShowArchiveName=") + ShowArchiveName + TEXT("\n"));
+
+		sb.append(TEXT("mflFileName=") + mflFileName + TEXT("\n"));
 	}
 
 	sb.append(TEXT("AlwaysTop=") + acfc::BoolToString(AlwaysTop) + TEXT("\n"));
@@ -939,7 +998,7 @@ bool CMainForm::SaveIni(std::wstring IniName)
 	for (i = 0; i < (int)PluginPathes.size(); i++)
 		sb.append(TEXT("PluginPath") + std::to_wstring(i) + TEXT("=") + PluginPathes[i] + TEXT("\n"));
 
-	sb.append(TEXT("InternalLoader=") + Susie.InternalLoader + TEXT("\n"));
+	sb.append(TEXT("InternalLoader=") + Susie->InternalLoader + TEXT("\n"));
 
 	sb.append(TEXT("LastMovedFolder=") + LastMovedFolder + TEXT("\n"));
 
@@ -992,7 +1051,7 @@ bool CMainForm::SaveFileList(std::wstring FileName)
 	return (true);
 }
 
-bool CMainForm::LoadFileList(std::wstring FileName, std::vector<CImageInfo> &DestLists, int &NewIndex, int &NewSubIndex)
+bool CMainForm::LoadFileList(std::wstring FileName, std::vector<CImageInfo> &DestLists, int &NewIndex, int &NewSubIndex, std::wstring &sFileName, std::wstring &sArchiveName)
 {
 	std::map<std::wstring, std::wstring> Map;
 	acfc::LoadMapFromFile(Map, FileName);
@@ -1004,8 +1063,8 @@ bool CMainForm::LoadFileList(std::wstring FileName, std::vector<CImageInfo> &Des
 
 	sIdx = acfc::GetIntegerValue(Map, TEXT("ShowIndex"), 0, 0, 0);
 	sAcv = acfc::GetIntegerValue(Map, TEXT("ShowArchive"), -1, -1, 0x7FFFFFFF);
-	TryFileName = acfc::GetStringValue(Map, TEXT("ShowFileName"), TryFileName);
-	TryArchiveName = acfc::GetStringValue(Map, TEXT("ShowArchiveName"), TryArchiveName);
+	sFileName = acfc::GetStringValue(Map, TEXT("ShowFileName"), TryFileName);
+	sArchiveName = acfc::GetStringValue(Map, TEXT("ShowArchiveName"), TryArchiveName);
 
 	if (sAcv < 0)
 	{
@@ -1682,7 +1741,7 @@ LRESULT CMainForm::ProcessMessages(HWND hWnd, UINT message, WPARAM wParam, LPARA
 						MnSave_Click();
 						break;
 
-					case ID_PLUGIN_INTERNALLOADEREXTENSION:
+					case ID_PLUGIN_INTERNALLOADEREXT:
 						MnInternalLoader_Click();
 						break;
 
@@ -1711,7 +1770,7 @@ LRESULT CMainForm::ProcessMessages(HWND hWnd, UINT message, WPARAM wParam, LPARA
 			break;
 
 		case WM_CREATE:
-			CreateFromMessag(hWnd, (LPCREATESTRUCT)(lParam));
+			CreateFromMessage(hWnd, (LPCREATESTRUCT)(lParam));
 			break;
 		
 		case WM_CLOSE:
@@ -1805,6 +1864,7 @@ LRESULT CMainForm::ProcessMessages(HWND hWnd, UINT message, WPARAM wParam, LPARA
 			break;
 
 		case WM_CONTEXTMENU:
+			// NOTE:Lock íÜÇ…âEÉNÉäÉbÉNÇ≈ÉÅÉjÉÖÅ[ÇèoÇµÇƒÉäÉXÉgÇï\é¶Å®Ç‡Ç§àÍìxâEÉNÉäÉbÉNÇ≈ÉÅÉjÉÖÅ[ÇèoÇµÇƒâÊëúÇï\é¶Ç∆Ç∑ÇÈÇ∆Ç±ÇÍÇ™åƒÇŒÇÍÇÈ
 			ShowContextMenu();
 			break;
 
@@ -2033,13 +2093,15 @@ LRESULT CMainForm::ProcessMessagesListBox(HWND hWnd, UINT message, WPARAM wParam
 {
 	switch (message)
 	{	
+		case WM_RBUTTONUP:
+			ProcessMessages(hWnd, message, wParam, lParam, CallDefault);
+			return(0);
 		case WM_MOUSEHOVER:
 		case WM_MOUSELEAVE:
 		case WM_MOUSEMOVE:
 		case WM_RBUTTONDOWN:
 		case WM_MBUTTONDOWN:
 		case WM_LBUTTONUP:
-		case WM_RBUTTONUP:
 		case WM_MBUTTONUP:
 		case WM_LBUTTONDOWN:
 			ProcessMessages(hWnd, message, wParam, lParam, CallDefault);
@@ -2238,20 +2300,31 @@ void CMainForm::OnPaint(bool FullRefresh)
 	{
 		return;
 	}
-	BeginUpdate();
+
+	//WWidth > MWidth || WHeight > MHeight || 
+	if (WLeft < Desktop.GetLeft() || WTop < Desktop.GetTop() || WLeft + WWidth >= Desktop.GetRight() || WTop + WHeight >= Desktop.GetBottom())
+	{
+		FullRefresh = true;
+	}
+
 	EnterCriticalSection(&CriticalSection);
+
+	BeginUpdate();
+
+	if (ShowingDialog)FullRefresh = false;
+
 	PAINTSTRUCT ps;
 	HDC hDC;
 	if(FullRefresh == false)hDC = BeginPaint(hWindow, &ps);
 	int i;
 
-	if (Susie.Mode != EPluginMode_NONE) // âÊëúÇ™ï`âÊÇ≥ÇÍÇƒÇ¢ÇÈèÍçá
+	if (Susie->Mode != EPluginMode_NONE) // âÊëúÇ™ï`âÊÇ≥ÇÍÇƒÇ¢ÇÈèÍçá
 	{
 		if (AnimeRefresh == true)
 		{
-			if (Susie.AnimateUpDateFrame(EnableDropFrame) == false) // éüÇÃÉtÉåÅ[ÉÄÇÃèÄîıÇÇ∑ÇÈ
+			if (Susie->AnimateUpDateFrame(EnableDropFrame) == false) // éüÇÃÉtÉåÅ[ÉÄÇÃèÄîıÇÇ∑ÇÈ
 			{
-				Susie.AnimePlaying = false;
+				Susie->AnimePlaying = false;
 			}
 			AnimeRefresh = false;
 		}
@@ -2290,11 +2363,24 @@ void CMainForm::OnPaint(bool FullRefresh)
 		POINT p = {};
 		SetBrushOrgEx(hDC, 0, 0, &p);
 
-		StretchDIBits(hDC,
+//		HDC sDC = CreateCompatibleDC(hDC);
+//		HANDLE sDC_hBitmap = SelectObject(sDC, Susie->hBmpData);
+
+/*		BOOL result = StretchBlt(hDC,
 			Dest.X, Dest.Y, Dest.Width, Dest.Height,
-			Src.X, Susie.SrcRHeight - Src.GetBottom(), Src.Width, Src.Height,
-			Susie.pBmpData, Susie.pBmpInfo,
+			sDC,
+			Src.X, Susie->SrcRHeight - Src.GetBottom(), Src.Width, Src.Height,
+			SRCCOPY);*/
+
+
+		int result = StretchDIBits(hDC,
+			Dest.X, Dest.Y, Dest.Width, Dest.Height,
+			Src.X, Susie->SrcRHeight - Src.GetBottom(), Src.Width, Src.Height,
+			Susie->pBmpData, Susie->pBmpInfo,
 			DIB_RGB_COLORS, SRCCOPY);
+
+//		SelectObject(sDC, sDC_hBitmap);
+//		DeleteDC(sDC);
 
 		SetStretchBltMode(hDC, OldStretchMode);
 		if (FullRefresh == true)ReleaseDC(hWindow, hDC);
@@ -2463,8 +2549,10 @@ void CMainForm::OnPaint(bool FullRefresh)
 
 	if (SSIcon >= 0) DrawSSIcon();
 	if (FullRefresh == false)EndPaint(hWindow, &ps);
-	LeaveCriticalSection(&CriticalSection);
+
 	EndUpdate();
+
+	LeaveCriticalSection(&CriticalSection);
 }
 
 
@@ -2476,7 +2564,7 @@ bool CMainForm::GetTransRect(Gdiplus::Rect &wRect, Gdiplus::Rect &Src, Gdiplus::
 	double sl, st, sr, sb;
 	double rt;
 
-	Src = { 0, 0, Susie.SrcRWidth, Susie.SrcRHeight };
+	Src = { 0, 0, Susie->SrcRWidth, Susie->SrcRHeight };
 	Dest = wRect;
 	rt = (double)(Dest.Width) / (Src.Width);
 
@@ -2888,9 +2976,9 @@ bool CMainForm::SyncWindow(void)
 	CheckRefreshBackBuffer();
 
 	if (WWidth > WHeight)
-		SizeRatio = (double)WWidth / Susie.ORotWidth;
+		SizeRatio = (double)WWidth / Susie->ORotWidth;
 	else
-		SizeRatio = (double)WHeight / Susie.ORotHeight;
+		SizeRatio = (double)WHeight / Susie->ORotHeight;
 
 	return (true);
 }
@@ -2898,8 +2986,8 @@ bool CMainForm::SyncWindow(void)
 
 bool CMainForm::CheckRefreshBackBuffer(void)
 {
-	if ((Holding != EEventButton_NONE || ShowingList == true) && Susie.MustBackBufferTrans == false) return (false);
-	return (Susie.SetFormSize(WWidth, WHeight));
+	if ((Holding != EEventButton_NONE || ShowingList == true) && Susie->MustBackBufferTrans == false) return (false);
+	return (Susie->SetFormSize(WWidth, WHeight));
 }
 
 
@@ -3156,6 +3244,7 @@ void CMainForm::OnMouseUp(CMainForm::EEventButton button)
 {
 	POINT p;
 	GetCursorPos(&p);
+	static int C = 0;
 	if (Locked)
 	{
 		if (button == EEventButton_RIGHT)
@@ -3210,7 +3299,7 @@ void CMainForm::OnMouseUp(CMainForm::EEventButton button)
 				IgnoreContextMenu = false;
 				if (PreZoomed)
 				{
-					Susie.MustBackBufferTrans = true;
+					Susie->MustBackBufferTrans = true;
 					CheckRefreshBackBuffer();
 					FormRefresh();
 					PreZoomed = false;
@@ -3611,6 +3700,9 @@ void CMainForm::SetTaskButtonVisibility(void)
 
 void CMainForm::NoStayOnTop(void)
 {
+	EnterCriticalSection(&CriticalSection);
+	ShowingDialog = 1;
+	LeaveCriticalSection(&CriticalSection);
 	SSTimer.Enabled(false);
 	PauseAnimeThread();
 	SetWindowPos(hWindow, HWND_NOTOPMOST, 0, 0, 0, 0, (SWP_NOMOVE | SWP_NOSIZE));
@@ -3625,19 +3717,22 @@ void CMainForm::RestoreStayOnTop(void)
 		SetWindowPos(hWindow, HWND_TOPMOST, 0, 0, 0, 0, (SWP_NOMOVE | SWP_NOSIZE));
 	else
 		SetWindowPos(hWindow, HWND_NOTOPMOST, 0, 0, 0, 0, (SWP_NOMOVE | SWP_NOSIZE));
+	EnterCriticalSection(&CriticalSection);
+	ShowingDialog = 0;
+	LeaveCriticalSection(&CriticalSection);
 }
 
 void CMainForm::PauseAnimeThread(void)
 {
-	Susie.PauseAnimate();
+	Susie->PauseAnimate();
 
-	if (Susie.Animate != EAnimationType_NONE && Susie.AnimePlaying == true)
+	if (Susie->Animate != EAnimationType_NONE && Susie->AnimePlaying == true)
 	{
 		AnimePaused = true;
 
 		while (1)
 		{
-			if (AnimeTimerPaused == true || Susie.AnimePlaying == false)break;
+			if (AnimeTimerPaused == true || Susie->AnimePlaying == false)break;
 			Sleep(MIN_WAIT);
 		}
 	}
@@ -3645,15 +3740,15 @@ void CMainForm::PauseAnimeThread(void)
 
 void CMainForm::RestartAnimeThread(void)
 {
-	Susie.RestartAnimate();
+	Susie->RestartAnimate();
 
-	if (Susie.Animate != EAnimationType_NONE && Susie.AnimePlaying == true)
+	if (Susie->Animate != EAnimationType_NONE && Susie->AnimePlaying == true)
 	{
 		AnimePaused = false;
 
 		while (1)
 		{
-			if (AnimeTimerPaused == false || Susie.AnimePlaying == false)break;
+			if (AnimeTimerPaused == false || Susie->AnimePlaying == false)break;
 			Sleep(MIN_WAIT);
 		}
 	}
@@ -3966,18 +4061,19 @@ void CMainForm::CreateFolder(void)
 
 void CMainForm::SetRotateValueFromSusie(void)
 {
-	RotateValue = Susie.Rotate;
+	RotateValue = Susie->Rotate;
 	(*DisplayList)[ShowIndex].Rotate = RotateValue;
 }
 
 void CMainForm::AbsoluteRotate(int Value)
 {
-	if (Susie.Showing == true && Initialized == true)
+	if (Susie->Showing == true && Initialized == true)
 	{
-		Susie.AbsoluteRotate(Value);
+		Susie->AbsoluteRotate(Value);
 		SetRotateValueFromSusie();
 		SetRotateImageSize();
 		if (CorrectWindow())SyncWindow();
+		FormRefresh();
 	}
 
 	CheckRotateCheck();
@@ -3985,15 +4081,16 @@ void CMainForm::AbsoluteRotate(int Value)
 
 void CMainForm::OffsetRotate(int Value)
 {
-	if (Susie.Showing == false) return;
+	if (Susie->Showing == false) return;
 
-	Susie.OffsetRotate(Value);
+	Susie->OffsetRotate(Value);
 	SetRotateValueFromSusie();
 
 	CheckRotateCheck();
 	SetRotateImageSize();
 	if (CorrectWindow())SyncWindow();
 	(*DisplayList)[ShowIndex].Rotate = RotateValue;
+	FormRefresh();
 }
 
 
@@ -4011,11 +4108,11 @@ bool CMainForm::ZoomImage(double NewPercentage)
 	SizeRatio = NewPercentage;
 	FixViewOut();
 
-	double nWidth = Susie.ORotWidth * SizeRatio;
-	double nHeight = Susie.ORotHeight * SizeRatio;
+	double nWidth = Susie->ORotWidth * SizeRatio;
+	double nHeight = Susie->ORotHeight * SizeRatio;
 
 	CheckDiagonalLength(nWidth, nHeight);
-	SizeRatio = Susie.ORotWidth / nWidth;
+	SizeRatio = Susie->ORotWidth / nWidth;
 
 	SetWindowSize((int)nWidth, (int)nHeight, false);
 	SetDiagonalLength();
@@ -4039,12 +4136,12 @@ bool CMainForm::ZoomOrgPosition(double NewPercentage, int X, int Y)
 	dx = (double)(X - WLeft - WWidth / 2) / SizeRatio;
 	dy = (double)(Y - WTop - WHeight / 2) / SizeRatio;
 
-	int iWidth = (int)(Susie.ORotWidth * NewPercentage);
-	int iHeight = (int)(Susie.ORotHeight * NewPercentage);
+	int iWidth = (int)(Susie->ORotWidth * NewPercentage);
+	int iHeight = (int)(Susie->ORotHeight * NewPercentage);
 
 	if (CheckMinimalDiagonalLength(iWidth, iHeight))
 	{
-		NewPercentage = (double)iWidth / Susie.ORotWidth;
+		NewPercentage = (double)iWidth / Susie->ORotWidth;
 	}
 
 	SizeRatio = NewPercentage;
@@ -4065,18 +4162,18 @@ bool CMainForm::ZoomOrgPosition(double NewPercentage, int X, int Y)
 // êVÇµÇ¢âÊëúÇì«Ç›çûÇÒÇæÇ∆Ç´Ç…ÉEÉBÉìÉhÉEÉTÉCÉYÇåàíËÇ∑ÇÈ
 void CMainForm::SetNewImageSize(void)
 {
-	double ImageWidth = Susie.ORotWidth;
-	double ImageHeight = Susie.ORotHeight;
+	double ImageWidth = Susie->ORotWidth;
+	double ImageHeight = Susie->ORotHeight;
 
-	WbHRatio = (double)Susie.ORotWidth / Susie.ORotHeight;
+	WbHRatio = (double)Susie->ORotWidth / Susie->ORotHeight;
 
 	double MaxWidth = (double)MWidth;// * 9 / 10;
 	double MaxHeight = (double)MHeight;// * 9 / 10;
 
 	if (FixSizeRatio || InitialReloading)
 	{
-		ImageWidth = Susie.ORotWidth * SizeRatio;
-		ImageHeight = Susie.ORotHeight * SizeRatio;
+		ImageWidth = Susie->ORotWidth * SizeRatio;
+		ImageHeight = Susie->ORotHeight * SizeRatio;
 	}
 
 	ReachMinDL = CheckDiagonalLength(ImageWidth, ImageHeight);
@@ -4233,8 +4330,8 @@ bool CMainForm::CheckDiagonalLength(double &dWidth, double &dHeight)
 	if (Resize)
 	{
 		double x, y, r, d;
-		x = (double)Susie.ORotWidth;
-		y = (double)Susie.ORotHeight;
+		x = (double)Susie->ORotWidth;
+		y = (double)Susie->ORotHeight;
 
 		if (x == 0) r = 1;
 		else
@@ -4279,12 +4376,12 @@ bool CMainForm::CorrectWindow(void)
 		if (WWidth > WHeight)
 		{
 			WWidth = Desktop.Width;
-			WHeight = (int)((double)WWidth * Susie.OrgHeight / Susie.OrgWidth);
+			WHeight = (int)((double)WWidth * Susie->OrgHeight / Susie->OrgWidth);
 		}
 		else
 		{
 			WHeight = Desktop.Height;
-			WWidth = (int)((double)WHeight * Susie.OrgWidth / Susie.OrgHeight);
+			WWidth = (int)((double)WHeight * Susie->OrgWidth / Susie->OrgHeight);
 		}
 		Errored = true;
 	}
@@ -4292,18 +4389,18 @@ bool CMainForm::CorrectWindow(void)
 	if (WWidth < 0)
 	{
 		if (WHeight > 0)
-			WWidth = (int)((double)WHeight * Susie.OrgWidth / Susie.OrgHeight);
+			WWidth = (int)((double)WHeight * Susie->OrgWidth / Susie->OrgHeight);
 		else
-			WWidth = Susie.OrgWidth, WHeight = Susie.OrgHeight;
+			WWidth = Susie->OrgWidth, WHeight = Susie->OrgHeight;
 		Errored = true;
 	}
 
 	if (WHeight < 0)
 	{
 		if (WWidth > 0)
-			WHeight = (int)((double)WWidth * Susie.OrgHeight / Susie.OrgWidth);
+			WHeight = (int)((double)WWidth * Susie->OrgHeight / Susie->OrgWidth);
 		else
-			WWidth = Susie.OrgWidth, WHeight = Susie.OrgHeight;
+			WWidth = Susie->OrgWidth, WHeight = Susie->OrgHeight;
 		Errored = true;
 	}
 	*/
@@ -4674,7 +4771,7 @@ bool CMainForm::ChangeImageFileName(std::wstring src)
 	if (InArchive == true)
 	{
 		FileList[ShowArchive].FileName = src;
-		Susie.ChangeArchiveFileName(src);
+		Susie->ChangeArchiveFileName(src);
 	}
 	else
 	{
@@ -4710,14 +4807,14 @@ bool CMainForm::RenameImageFile(std::wstring newName)
 
 
 // ÉtÉ@ÉCÉãÉIÅ[ÉvÉìä÷åW
-bool CMainForm::OpenFiles(std::vector<std::wstring> &SrcLists)
+bool CMainForm::OpenFiles(std::vector<std::wstring> &SrcList)
 {
 	bool bTemp = (((GetAsyncKeyState(VK_LCONTROL) & 0x8000) | (GetAsyncKeyState(VK_RCONTROL) & 0x8000)));
-	return (OpenFiles(SrcLists, TEXT(""), 0, bTemp));
+	return (OpenFiles(SrcList, TEXT(""), 0, bTemp));
 }
 
 
-bool CMainForm::OpenFiles(std::vector<std::wstring> &SrcLists, std::wstring SelectedFile, int Offset, bool AddMode)
+bool CMainForm::OpenFiles(std::vector<std::wstring> &SrcList, std::wstring SelectedFile, int Offset, bool AddMode)
 {
 	if (FileLoading > 0) return (false);
 
@@ -4727,148 +4824,163 @@ bool CMainForm::OpenFiles(std::vector<std::wstring> &SrcLists, std::wstring Sele
 	std::vector<CImageInfo> TempLists;
 
 	int newIdx, newSubIdx; // éüÇ…ï\é¶Ç∑ÇÈâÊëúÇÃÉCÉìÉfÉbÉNÉX newSubIdx Ç™ÇOà»è„ÇÃèÍçáÇ…ÇÕà≥èkÉtÉ@ÉCÉãíÜÇÃÉtÉ@ÉCÉã
-	CheckGetLists(TempLists, SrcLists, newIdx, newSubIdx);
+	int Dir = 1;
+	if (Offset < 0)Dir = -1;
+
+	std::wstring LoadedmflFile = mflFileName;
+	CheckGetList(TempLists, SrcList, Dir, newIdx, newSubIdx, LoadedmflFile);
 
 	if (TempLists.size() == 0)return (true);
 
 	CloseArchiveMode();
 
-	if (((GetAsyncKeyState(VK_LCONTROL) & 0x8000)
-		| (GetAsyncKeyState(VK_RCONTROL) & 0x8000))
-		|| AddMode)
+	if (SelectedFile == TEXT(""))
 	{
-		if (newSubIdx < 0)
+		if (((GetAsyncKeyState(VK_LCONTROL) & 0x8000)
+			| (GetAsyncKeyState(VK_RCONTROL) & 0x8000))
+			|| AddMode)
 		{
-			ShowIndex = (int)FileList.size() + 1 + newIdx;
-			ShowArchive = -1;
+			if (newSubIdx < 0)
+			{
+				ShowIndex = (int)FileList.size() + Offset + newIdx;
+				ShowArchive = -1;
+			}
+			else
+			{
+				ShowIndex = newSubIdx;
+				ShowArchive = (int)FileList.size() + Offset + newIdx;
+			}
+			AddLists = true;
+			AddFileList(TempLists, 1);
 		}
 		else
 		{
-			ShowIndex = newSubIdx;
-			ShowArchive = (int)FileList.size() + 1 + newIdx;
+			if (newSubIdx < 0)
+			{
+				ShowIndex = newIdx + Offset;
+				ShowArchive = -1;
+			}
+			else
+			{
+				ShowIndex = newSubIdx + Offset;
+				ShowArchive = newIdx;
+			}
+			AddLists = false;
+			AddFileList(TempLists, 0);
 		}
-		AddLists = true;
-		AddFileList(TempLists, 1);
+		mflFileName = LoadedmflFile;
+		ShowIndexRangeInFileList();
 	}
 	else
 	{
-		if (newSubIdx < 0)
-		{
-			ShowIndex = newIdx;
-			ShowArchive = -1;
-		}
-		else
-		{
-			ShowIndex = newSubIdx;
-			ShowArchive = newIdx;
-		}
-		AddLists = false;
 		AddFileList(TempLists, 0);
+		ShowArchive = -1;
+		AddLists = false;
+		ShowIndex = IndexOfImageInfos(&FileList, SelectedFile);
+		if (ShowIndex < 0)ShowIndex = 0;
+		ShowIndex += Offset;
+		ShowIndexRangeInFileList();
+		TryFileName = TEXT("");
+		TryArchiveName = TEXT("");
 	}
 
 	if (FileList.size() == 0) return (false);
-	
 	DisplayList = &FileList;
 	
-	if (SelectedFile != TEXT("")) ShowIndex = IndexOfImageInfos(&FileList, SelectedFile);
-
-	if (ShowArchive < 0)
-	{
-		ShowIndex += (Offset + newIdx);
-		while (ShowIndex < 0) ShowIndex += (int)FileList.size();
-		while (ShowIndex >= (int)FileList.size()) ShowIndex -= (int)FileList.size();
-	}
-	else
-	{
-		ShowArchive = ShowIndex + Offset + newIdx;
-		ShowIndex = newSubIdx;
-		if(ShowArchive >= (int)FileList.size())
-		{
-			ShowIndex = (int)FileList.size() - 1;
-			ShowArchive = -1;
-		}
-		else
-		{
-			if (FileList[ShowArchive].FileName != TryArchiveName || FileList[ShowArchive].ImageInfoList[ShowIndex].FileName != TryFileName)
-			{
-				ShowIndex = (int)FileList.size() - 1;
-				ShowArchive = -1;
-			}
-		}
-	}
-
 	CheckExistsFileListCorrect();
 	SetFileList();
 
 	if (ShowingList == false || AddLists == false)
 	{
 		ShowFromShowIndex = true;
-		ToggleShowList(EShowMode_FORCEPICTURE);
+		ToggleShowList(EShowMode_FORCEPICTURE, Dir);
 	}
 
 	return (true);
 }
 
-bool CMainForm::CheckGetLists(std::vector<CImageInfo> &DestLists, std::vector<std::wstring> &DropLists, int &NewIdx, int&NewSubIdx)
+bool CMainForm::CheckGetList(std::vector<CImageInfo> &DestList, std::vector<std::wstring> &DropList, int Dir, int &NewIdx, int&NewSubIdx, std::wstring &LoadedmflFile)
 {
 	int i;
 	NewIdx = 0, NewSubIdx = -1;
-	for (i = 0; i < (int)DropLists.size(); i++)
+
+	for (i = 0; i < (int)DropList.size(); i++)
 	{
-		if (acfc::GetFileExt(DropLists[i]) == TEXT(".lnk"))
+		if (acfc::GetFileExt(DropList[i]) == TEXT(".lnk"))
 		{
-			DropLists[i] = acfc::GetFileFromLink(DropLists[i]);
+			DropList[i] = acfc::GetFileFromLink(DropList[i]);
 		}
 
-		if (acfc::FolderExists(DropLists[i]))
+		if (acfc::FolderExists(DropList[i]))
 		{
-			GetImageLists(DropLists[i], DestLists, SearchSubFolder, EnableFileMask, FileMaskString);
+			GetImageList(DropList[i], DestList, SearchSubFolder, EnableFileMask, FileMaskString);
+
+			if (Dir > 0 && i == 0)
+			{
+				if(DestList.size() > 0)TryFileName = DestList[0].FileName;
+			}
+
+			if (Dir < 0)
+			{
+				NewIdx = (int)DestList.size();
+				TryFileName = DestList[DestList.size() - 1].FileName;
+				NewSubIdx = -1;
+			}
 		}
-		else if (acfc::GetFileExt(DropLists[i]) == TEXT(".mfl"))
+		else if (acfc::GetFileExt(DropList[i]) == TEXT(".mfl"))
 		{
 			int newI, newSI;
-			int sizeB = (int)DestLists.size();
-			LoadFileList(DropLists[i], DestLists, newI, newSI);
-			if (i == 0)
+			int sizeB = (int)DestList.size();
+			LoadFileList(DropList[i], DestList, newI, newSI, TryFileName, TryArchiveName);
+			if ((Dir > 0 && i == 0) || (Dir < 0))
 			{
 				NewIdx = sizeB + newI;
 				NewSubIdx = newSI;
 			}
+			LoadedmflFile = DropList[i];
 		}
 		else
 		{
-			if (EnableFileMask && acfc::FitsMasks(DropLists[i], FileMaskString) == false) continue;
-			if (acfc::FileExists(DropLists[i]) == false) continue;
+			if (EnableFileMask && acfc::FitsMasks(DropList[i], FileMaskString) == false) continue;
+			if (acfc::FileExists(DropList[i]) == false) continue;
 
 			struct _stati64 st;
-			_wstat64(DropLists[i].c_str(), &st);
+			_wstat64(DropList[i].c_str(), &st);
 
 			CImageInfo newII;
-			newII.FileName = DropLists[i];
+			newII.FileName = DropList[i];
 			newII.FileSize = (int)st.st_size;
 			newII.Timestamp = st.st_ctime;
 			newII.Rotate = -1;
-			DestLists.push_back(newII);
+			DestList.push_back(newII);
+
+			if (Dir > 0 && i == 0)
+			{
+				if (DropList.size() > 0)TryFileName = DropList[0];
+			}
+
+			if (Dir < 0)
+			{
+				NewIdx = (int)DestList.size();
+				TryFileName = DestList[DestList.size() - 1].FileName;
+				NewSubIdx = -1;
+			}
 		}
 	}
 	return (true);
 }
 
-bool CMainForm::GetImageLists(std::wstring Src, std::vector<CImageInfo> &Dest, bool SubFolder, bool EnableFileMask, std::wstring FileMaskString) // c:\windows\dest\*.dll ÇÃÇÊÇ§Ç»å`éÆÇ≈ Src ÇÕéwíËÇ∑ÇÈ
+bool CMainForm::GetImageList(std::wstring Src, std::vector<CImageInfo> &Dest, bool SubFolder, bool EnableFileMask, std::wstring FileMaskString) // c:\windows\dest\*.dll ÇÃÇÊÇ§Ç»å`éÆÇ≈ Src ÇÕéwíËÇ∑ÇÈ
 {
-	static bool Flag = false;
-	if (Flag)return(false);
+	if (FileSearching > 0)return(false);
+	FileSearching = 1;
 
 	NoStayOnTop();
-
-	Flag = true;
 
 	if (EnableFileMask == false)
 	{
 		FileMaskString = TEXT("*.*");
 	}
-
-	Dest.clear();
 
 	ProgressForm->SetData(Src, SubFolder, FileMaskString);
 
@@ -4877,42 +4989,35 @@ bool CMainForm::GetImageLists(std::wstring Src, std::vector<CImageInfo> &Dest, b
 
 	RestoreStayOnTop();
 
-	Flag = false;
-
+	FileSearching = 0;
 	return (true);
 }
 
-bool CMainForm::AddFileList(std::vector<CImageInfo> &SrcLists, int Mode)
+bool CMainForm::AddFileList(std::vector<CImageInfo> &SrcList, int Mode)
 {
 	CloseArchiveMode();
 	switch (Mode)
 	{
 		// êVãK
 	case 0:
-		ShowIndex = 0;
 		FileList.clear();
 		SusieClear(EPluginMode_ALL);
 
-		if (SrcLists.size() > 0)
+		if (SrcList.size() > 0)
 		{
-			FileList = SrcLists;
+			FileList = SrcList;
 		}
 		break;
 
 		// í«â¡
 	case 1:
-		ShowIndex = (int)FileList.size();
-
-		while (SrcLists.size() > 0)
+		while (SrcList.size() > 0)
 		{
-			if (IndexOfImageInfos(&FileList, SrcLists[0].FileName) < 0)
-				FileList.push_back(SrcLists[0]);
+			if (IndexOfImageInfos(&FileList, SrcList[0].FileName) < 0)
+				FileList.push_back(SrcList[0]);
 
-			SrcLists.erase(SrcLists.begin());
+			SrcList.erase(SrcList.begin());
 		}
-
-		if (ShowIndex >= (int)FileList.size())
-			ShowIndex = (int)FileList.size() - 1;
 		break;
 	}
 	return (true);
@@ -5275,12 +5380,12 @@ CMainForm::EOpenFileResult CMainForm::OpenFile(CImageInfo & imageInfo)
 
 	if (InArchive == false)
 	{
-		if (Susie.SetImageFile(imageInfo) == false)
+		if (Susie->SetImageFile(imageInfo) == false)
 			return (EOpenFileResult_LOADFAILED);
 	}
 	else
 	{
-		if (Susie.SetSubImageFile(imageInfo) == false)
+		if (Susie->SetSubImageFile(imageInfo) == false)
 			return (EOpenFileResult_LOADFAILED); ;
 	}
 
@@ -5298,7 +5403,7 @@ bool CMainForm::OpenArchiveMode(CImageInfo &SrcImageInfo, int SubIndex, int Dir,
 	if (DisplayList->size() == 0) // ArchiveFileList Ç…Ç‹ÇæãLç⁄Ç™Ç»Ç¢
 	{
 		// ÉAÅ[ÉJÉCÉuÉtÉ@ÉCÉãÇ©ÇÁÉäÉXÉgÇéÊìæ
-		Susie.GetArchiveFileList(DisplayList);
+		Susie->GetArchiveFileList(DisplayList);
 		for (j = 0; j < (int)DisplayList->size(); j++)
 		{
 			CImageInfo TempII = (*DisplayList)[j];
@@ -5347,7 +5452,7 @@ bool CMainForm::OpenArchiveMode(CImageInfo &SrcImageInfo, int SubIndex, int Dir,
 	{
 		SetFileList();
 	}
-	else if (Susie.SetSubImageFile(DisplayList, ShowIndex, Dir) == false)
+	else if (Susie->SetSubImageFile(DisplayList, ShowIndex, Dir) == false)
 	{
 		CloseArchiveMode();
 		return (false);
@@ -5388,6 +5493,11 @@ bool CMainForm::CloseArchiveMode(void)
 
 void CMainForm::ToggleShowList(EShowMode Mode) // Mode 0:îΩì] 1:ÉäÉXÉgï\é¶ 2:âÊëúï\é¶ 3:ã≠êßâÊëúï\é¶
 {
+	ToggleShowList(Mode, 1); // Mode 0:îΩì] 1:ÉäÉXÉgï\é¶ 2:âÊëúï\é¶ 3:ã≠êßâÊëúï\é¶
+}
+
+void CMainForm::ToggleShowList(EShowMode Mode, int Dir) // Mode 0:îΩì] 1:ÉäÉXÉgï\é¶ 2:âÊëúï\é¶ 3:ã≠êßâÊëúï\é¶
+{
 	bool PreSL = ShowingList;
 	int Result = 0;
 
@@ -5420,11 +5530,11 @@ void CMainForm::ToggleShowList(EShowMode Mode) // Mode 0:îΩì] 1:ÉäÉXÉgï\é¶ 2:âÊë
 			ShowFromShowIndex = false;
 			if (ShowArchive < 0 && ShowIndex >= 0 && ShowIndex < (int)DisplayList->size())
 			{
-				Result = ShowAbsoluteImage(ShowIndex, -1, 1, Mode == EShowMode_FORCEPICTURE);
+				Result = ShowAbsoluteImage(ShowIndex, -1, Dir, Mode == EShowMode_FORCEPICTURE);
 			}
 			else
 			{
-				Result = ShowAbsoluteImage(ShowArchive, ShowIndex, 1, Mode == EShowMode_FORCEPICTURE);
+				Result = ShowAbsoluteImage(ShowArchive, ShowIndex, Dir, Mode == EShowMode_FORCEPICTURE);
 			}
 		}
 	}
@@ -5438,7 +5548,6 @@ void CMainForm::ToggleShowList(EShowMode Mode) // Mode 0:îΩì] 1:ÉäÉXÉgï\é¶ 2:âÊë
 
 	if (PreSL != ShowingList)
 	{
-		SyncWindow();
 		if (ShowingList == true)
 		{
 			SetFileList();
@@ -5447,20 +5556,21 @@ void CMainForm::ToggleShowList(EShowMode Mode) // Mode 0:îΩì] 1:ÉäÉXÉgï\é¶ 2:âÊë
 			SetMenuText(hPopupMenu, ID_POPUP_TOGGLEIMAGELIST, LoadStringResource(IDS_MES_1014));
 			DisplayBox.Focus();
 
-			if (WWidth < MIV_SMALLESTWINDOWSIZE || WHeight < MIV_SMALLESTWINDOWSIZE)
+			if (WWidth < MIV_SMALLESTLISTWINDOW || WHeight < MIV_SMALLESTLISTWINDOW)
 			{
-				if (WWidth < MIV_SMALLESTWINDOWSIZE)
+				if (WWidth < MIV_SMALLESTLISTWINDOW)
 				{
-					WLeft = WLeft + (WWidth - MIV_SMALLESTWINDOWSIZE) / 2;
-					WWidth = MIV_SMALLESTWINDOWSIZE;
+					WLeft = WLeft + (WWidth - MIV_SMALLESTLISTWINDOW) / 2;
+					WWidth = MIV_SMALLESTLISTWINDOW;
 				}
-				if (WHeight < MIV_SMALLESTWINDOWSIZE)
+				if (WHeight < MIV_SMALLESTLISTWINDOW)
 				{
-					WTop = WTop + (WHeight - MIV_SMALLESTWINDOWSIZE) / 2;
-					WHeight = MIV_SMALLESTWINDOWSIZE;
+					WTop = WTop + (WHeight - MIV_SMALLESTLISTWINDOW) / 2;
+					WHeight = MIV_SMALLESTLISTWINDOW;
 				}
 				WbHRatio = (double)WWidth / WHeight;
 			}
+			SyncWindow();
 		}
 		else
 		{
@@ -5501,7 +5611,7 @@ CMainForm::ELoadFileResult CMainForm::LoadFile(int Index, int SubIndex, int Dir,
 	if (OpenResult == EOpenFileResult_NOARCHIVEFILE) return (ELoadFileResult_NOARCHIVE);
 	if (OpenResult == EOpenFileResult_LOADFAILED) return (ELoadFileResult_FAILEDORNOMASK);
 
-	if ((Susie.Mode & EPluginMode_ARCHIVE) != 0 && InArchive == false)
+	if ((Susie->Mode & EPluginMode_ARCHIVE) != 0 && InArchive == false)
 	{
 		if (OpenArchiveMode((*DisplayList)[ShowIndex], SubIndex, Dir, MustShowImage) == false)
 		{
@@ -5533,7 +5643,7 @@ CMainForm::ELoadFileResult CMainForm::LoadFile(int Index, int SubIndex, int Dir,
 
 	EndUpdate();
 
-	if (Susie.Animate != EAnimationType_NONE)
+	if (Susie->Animate != EAnimationType_NONE)
 		BeginAnimeThread();
 
 	//	Hint = GetShortFileName(DisplayList->Strings[ShowIndex]);
@@ -5645,7 +5755,7 @@ CMainForm::EShowAbsoluteImageResult CMainForm::ShowAbsoluteImage(int Index, int 
 		{
 			// MIV_SI_OK:ê≥èÌèIóπ
 		case ELoadFileResult_OK:
-			RotateValue = Susie.Rotate;
+			RotateValue = Susie->Rotate;
 			CheckRotateCheck();
 			SSTimer.Enabled(SlideShow);
 			SetImageFileName();
@@ -5711,7 +5821,7 @@ CMainForm::EShowAbsoluteImageResult CMainForm::ShowAbsoluteImage(int Index, int 
 
 	if (Result == ELoadFileResult_OK)
 	{
-		RotateValue = Susie.Rotate;
+		RotateValue = Susie->Rotate;
 		CheckRotateCheck();
 	}
 
@@ -5761,22 +5871,22 @@ void CMainForm::IntervalOffset(int i)
 //-----------------------------------------------------------------------------------------------------
 void CMainForm::AnimeThread(void)
 {
-	while (Susie.AnimePlaying == true)
+	while (Susie->AnimePlaying == true)
 	{
 		// ÉAÉjÉÅÇÃèàóù
-		if ((Susie.Animate != EAnimationType_NONE || AnimePaused == true) && Susie.AnimePlaying == true)
+		if ((Susie->Animate != EAnimationType_NONE || AnimePaused == true) && Susie->AnimePlaying == true)
 		{
 			int WaitLeft; // ÉtÉåÅ[ÉÄÇÃçXêVÇ™ä‘Ç…çáÇÌÇ»Ç©Ç¡ÇΩÇ∆Ç´Ç…ä‘à¯Ç¢ÇΩÇŸÇ§Ç™Ç¢Ç¢ÅH
-			WaitLeft = Susie.DelayTime;
+			WaitLeft = Susie->DelayTime;
 
 			while (WaitLeft > MIN_LOOP)
 			{
 				Sleep(MIN_LOOP);
 				WaitLeft -= MIN_LOOP;
 				if (AnimePaused == true)break;
-				if (Susie.AnimePlaying == false)break;
+				if (Susie->AnimePlaying == false)break;
 			}
-			if (Susie.AnimePlaying == false)break;
+			if (Susie->AnimePlaying == false)break;
 
 			if (AnimePaused == false)
 			{
@@ -5810,12 +5920,12 @@ void CMainForm::AnimeThread(void)
 void CMainForm::SusieClear(EPluginMode Mode)
 {
 	if(Mode & EPluginMode_PICTURE)EndAnimeThread();
-	Susie.Clear(Mode);
+	Susie->Clear(Mode);
 }
 
 void CMainForm::BeginAnimeThread(void)
 {
-	Susie.AnimePlaying = true;
+	Susie->AnimePlaying = true;
 	
 	ThreadCount++;
 
@@ -5831,19 +5941,19 @@ void CMainForm::EndAnimeThread(void)
 		AnimePaused = false;
 		while (1)
 		{
-			if (AnimeTimerPaused == false || Susie.AnimePlaying == false)break;
+			if (AnimeTimerPaused == false || Susie->AnimePlaying == false)break;
 			Sleep(MIN_WAIT);
 		}
 	}
 
-	Susie.AnimePlaying = false;
+	Susie->AnimePlaying = false;
 
 	DWORD ExitCode = FALSE;
 	while (1)
 	{
 		GetExitCodeThread(hThread, &ExitCode);
 
-		if (ExitCode != STILL_ACTIVE && Susie.AnimeProcessing == false && AnimeTimerPaused == false)break;
+		if (ExitCode != STILL_ACTIVE && Susie->AnimeProcessing == false && AnimeTimerPaused == false)break;
 
 		Sleep(MIN_LOOP);
 	}
@@ -5851,7 +5961,7 @@ void CMainForm::EndAnimeThread(void)
 	CloseHandle(hThread);
 	hThread = nullptr;
 
-	Susie.AnimePlaying = false;
+	Susie->AnimePlaying = false;
 
 	ThreadCount--;
 }
@@ -5980,9 +6090,9 @@ void CMainForm::MnShowPbyP_Click(void)
 	SizeRatio = 1;
 
 	if (WLeft + WWidth / 2 == CenterX && CenterY == WTop + WHeight / 2)
-		SetWindowSize(Susie.ORotWidth, Susie.ORotHeight, false);
+		SetWindowSize(Susie->ORotWidth, Susie->ORotHeight, false);
 	else
-		SetWindowSize(Susie.ORotWidth, Susie.ORotHeight, true);
+		SetWindowSize(Susie->ORotWidth, Susie->ORotHeight, true);
 
 	SetDiagonalLength();
 }
@@ -6022,7 +6132,7 @@ void CMainForm::MnRotateFix_Click(void)
 {
 	if (Initialized == true)FixRotate = !FixRotate;
 	SetMenuCheck(hPopupMenu, ID_ROTATE_FIXROTATION, FixRotate);
-	Susie.FixRotate = FixRotate;
+	Susie->FixRotate = FixRotate;
 }
 
 void CMainForm::MnAlwaysTop_Click(void)
@@ -6302,27 +6412,29 @@ void CMainForm::MnShowInformation_Click(void)
 	}
 	else
 	{
-		double P = (double)WWidth / Susie.OrgWidth * 100.0;
+		double P = (double)WWidth / Susie->OrgWidth * 100.0;
 		Mes = ShowFileName + TEXT("\n");
 
 		if (InArchive) Mes += ShowArchiveName + TEXT("\n");
 
-		Mes += TEXT("\nSize : ") + std::to_wstring(Susie.OrgWidth) + TEXT(" x ") + std::to_wstring(Susie.OrgHeight) + TEXT(" px\n")
+		Mes += TEXT("\nSize : ") + std::to_wstring(Susie->OrgWidth) + TEXT(" x ") + std::to_wstring(Susie->OrgHeight) + TEXT(" px\n")
 			+ TEXT("Zoom : ") + acfc::FormatString(P, 1, false) + TEXT(" % (") + std::to_wstring(WWidth) + TEXT(" x ") + std::to_wstring(WHeight) + TEXT("px)\n")
 			+ TEXT("Image : ") + acfc::GetMetricPrefixString((int)(*DisplayList)[ShowIndex].FileSize, 3, TEXT("")) + TEXT(" bytes (") + std::to_wstring((*DisplayList)[ShowIndex].FileSize) + TEXT(" bytes)\n");
 
 		if (InArchive) Mes += TEXT("Archive : ") + acfc::GetMetricPrefixString((int)FileList[ShowArchive].FileSize, 3, TEXT("")) + TEXT(" bytes (") + std::to_wstring(FileList[ShowArchive].FileSize) + TEXT(" bytes)\n");
 
-		Mes	+= TEXT("Loader : ") + Susie.PluginName;
+		Mes	+= TEXT("Loader : ") + Susie->PluginName;
 
-		if (Susie.Animate != EAnimationType_NONE)
+		if (Susie->Animate != EAnimationType_NONE)
 		{
-			Mes += TEXT("\nFrame Count : ") + std::to_wstring(Susie.FrameCount);
-			if (Susie.LoopCount == 0)
+			Mes += TEXT("\nFrame Count : ") + std::to_wstring(Susie->FrameCount);
+			if (Susie->LoopCount == 0)
 				Mes += TEXT("\nLoop : Infinite");
 			else
-				Mes += TEXT("\nLoop : ") + std::to_wstring(Susie.LoopCount);
-			Mes += TEXT("\nPrevious Loop Drop Frame : ") + std::to_wstring(Susie.DropFrame);
+				Mes += TEXT("\nLoop : ") + std::to_wstring(Susie->LoopCount);
+#ifdef _DEBUG
+			Mes += TEXT("\nPrevious Loop Drop Frame : ") + std::to_wstring(Susie->DropFrame);
+#endif
 		}
 
 	}
@@ -6336,7 +6448,7 @@ void CMainForm::MnShowInformation_Click(void)
 
 void CMainForm::MnCopyImage_Click(void)
 {
-	Susie.CopyImageToClipboard();
+	Susie->CopyImageToClipboard();
 }
 
 //-----------------------------------------------------------------------------------------------------
@@ -6368,9 +6480,9 @@ void CMainForm::MnFileCut_Click(void)
 
 	if (InArchive == true)
 	{
-		Susie.PauseAnimate();
+		Susie->PauseAnimate();
 		MessageBox(hWindow, LoadStringResource(IDS_MES_1017).c_str(), TEXT("Information"), MB_OK | MB_ICONINFORMATION);
-		Susie.RestartAnimate();
+		Susie->RestartAnimate();
 	}
 
 	//ÉtÉ@ÉCÉãÉhÉçÉbÉvå`éÆÇÃDataObjectÇçÏê¨Ç∑ÇÈ
@@ -6491,7 +6603,7 @@ void CMainForm::MnOpenExistsFolder_Click(void)
 
 void CMainForm::MnJpegSave_Click(void)
 {
-	if (Susie.Showing == false) return;
+	if (Susie->Showing == false) return;
 
 	NoStayOnTop();
 	std::wstring Dest = (*DisplayList)[ShowIndex].FileName;
@@ -6506,7 +6618,7 @@ void CMainForm::MnJpegSave_Click(void)
 
 	if (SaveJpegDialog.ShowDialog(hWindow) == IDOK)
 	{
-		Susie.SaveJpeg(SaveJpegDialog.FileName, Susie.OrgWidth, Susie.OrgHeight, JCR[0], false);
+		Susie->SaveJpeg(SaveJpegDialog.FileName, Susie->OrgWidth, Susie->OrgHeight, JCR[0], false);
 	}
 
 	RestoreStayOnTop();
@@ -6514,7 +6626,7 @@ void CMainForm::MnJpegSave_Click(void)
 
 void CMainForm::MnJpegSaveShowingSize_Click(void)
 {
-	if (Susie.Showing == false) return;
+	if (Susie->Showing == false) return;
 
 	NoStayOnTop();
 	std::wstring Dest = (*DisplayList)[ShowIndex].FileName;
@@ -6529,7 +6641,7 @@ void CMainForm::MnJpegSaveShowingSize_Click(void)
 
 	if (SaveJpegDialog.ShowDialog(hWindow) == IDOK)
 	{
-		Susie.SaveJpeg(SaveJpegDialog.FileName, WWidth, WHeight, JCR[0], true);
+		Susie->SaveJpeg(SaveJpegDialog.FileName, WWidth, WHeight, JCR[0], true);
 	}
 	RestoreStayOnTop();
 }
@@ -6552,7 +6664,7 @@ void CMainForm::MnJpegSaveSetting_Click(void)
 
 void CMainForm::MnSavePNG_Click(void)
 {
-	if (Susie.Showing == false) return;
+	if (Susie->Showing == false) return;
 
 	NoStayOnTop();
 	std::wstring Dest = (*DisplayList)[ShowIndex].FileName;
@@ -6567,7 +6679,7 @@ void CMainForm::MnSavePNG_Click(void)
 
 	if (SavePNGDialog.ShowDialog(hWindow))
 	{
-		Susie.SavePNG(SavePNGDialog.FileName, Susie.SrcRWidth, Susie.SrcRHeight, false);
+		Susie->SavePNG(SavePNGDialog.FileName, Susie->SrcRWidth, Susie->SrcRHeight, false);
 	}
 
 	RestoreStayOnTop();
@@ -6651,7 +6763,7 @@ void CMainForm::MnBackGroundColor_Click(void)
 	if (ColorDialog.ShowDialog(hWindow) == IDOK)
 	{
 		FullFillColor = ColorDialog.GetColorGdip();
-		Susie.BGColor = FullFillColor;
+		Susie->BGColor = FullFillColor;
 		DrawColor = GetDrawColor(FullFillColor);
 		FormRefresh();
 	}
@@ -6841,7 +6953,7 @@ void CMainForm::MnSetPluginFolder_Click(void)
 				else
 					PluginPathes.push_back(FolderName);
 			}
-			Susie.SetPluginPathes(PluginPathes);     // SPI path set
+			Susie->SetPluginPathes(PluginPathes);     // SPI path set
 
 			Temp = LoadStringResource(IDS_MES_1026);
 			for (i = 0; i < (int)PluginPathes.size(); i++)
@@ -6858,7 +6970,7 @@ void CMainForm::MnOpenPluginDialog_Click(void)
 {
 	NoStayOnTop();
 
-	if ((Susie.Mode & EPluginMode_SPI) != 0) Susie.OpenSpiSettingDialog(hWindow);
+	if ((Susie->Mode & EPluginMode_SPI) != 0) Susie->OpenSpiSettingDialog(hWindow);
 
 	RestoreStayOnTop();
 }
@@ -6866,11 +6978,21 @@ void CMainForm::MnOpenPluginDialog_Click(void)
 void CMainForm::MnSave_Click(void)
 {
 	NoStayOnTop();
-	
-	SavemflDialog.InitialDirectory = GetImageFileFolder();
+	if (mflFileName != TEXT(""))
+	{
+		SavemflDialog.InitialDirectory = acfc::GetFolderName(mflFileName);
+		SavemflDialog.FileName = acfc::GetFileName(mflFileName);
+	}
+	else
+	{
+		SavemflDialog.InitialDirectory = GetImageFileFolder();
+	}
+
 
 	if (SavemflDialog.ShowDialog(hWindow) == IDOK)
 		SaveFileList(SavemflDialog.FileName);
+
+	mflFileName = SavemflDialog.FileName;
 
 	RestoreStayOnTop();
 }
@@ -6879,10 +7001,10 @@ void CMainForm::MnSave_Click(void)
 void CMainForm::MnInternalLoader_Click(void)
 {
 	NoStayOnTop();
-	InputForm->SetData(LoadStringResource(IDS_MES_1053), LoadStringResource(IDS_MES_1054), Susie.InternalLoader);
+	InputForm->SetData(LoadStringResource(IDS_MES_1053), LoadStringResource(IDS_MES_1054), Susie->InternalLoader);
 	if (InputForm->ShowDialog(appInstance, hWindow) == IDOK)
 	{
-		Susie.InternalLoader = InputForm->Result;
+		Susie->InternalLoader = InputForm->Result;
 	}
 	RestoreStayOnTop();
 }

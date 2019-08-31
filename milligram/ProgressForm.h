@@ -42,3 +42,5 @@ private:
 
 	acfc::CTimer LoopTimer;
 };
+
+extern CProgressForm *ProgressForm;

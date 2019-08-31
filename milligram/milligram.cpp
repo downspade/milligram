@@ -10,19 +10,12 @@
 #include "JpegSettingForm.h"
 #include "ProgressForm.h"
 
-
 #pragma comment(lib, "winmm.lib")
 
 #define MAX_LOADSTRING 100
 
 // Global Variables:
 HINSTANCE hInst;                                // current instance
-
-extern CMainForm *MainForm;
-extern CInputForm *InputForm;
-extern CFormSizeForm *FormSizeForm;
-extern CJpegSettingForm *JpegSettingForm;
-extern CProgressForm *ProgressForm;
 
 
 // Forward declarations of functions included in this code module:
@@ -34,6 +27,15 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
 {
 	UNREFERENCED_PARAMETER(hPrevInstance);
 	UNREFERENCED_PARAMETER(lpCmdLine);
+
+	Gdiplus::GdiplusStartupInput gdiplusStartupInput; // = {1, NULL, FALSE, FALSE};
+	gdiplusStartupInput.GdiplusVersion = 1;
+	gdiplusStartupInput.DebugEventCallback = NULL;
+	gdiplusStartupInput.SuppressBackgroundThread = FALSE;
+	gdiplusStartupInput.SuppressExternalCodecs = FALSE;
+
+	ULONG_PTR GdiplusToken = NULL;
+	Gdiplus::GdiplusStartup(&GdiplusToken, &gdiplusStartupInput, NULL);
 
 	MainForm = new CMainForm();
 	InputForm = new CInputForm();
@@ -62,6 +64,8 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
 	delete FormSizeForm;
 	delete InputForm;
 	delete MainForm;
+
+	Gdiplus::GdiplusShutdown(GdiplusToken);
 
 	return (int)msg.wParam;
 }

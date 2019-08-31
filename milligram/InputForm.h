@@ -23,3 +23,5 @@ private:
 	HWND hStaticText;
 	HWND hEdit;
 };
+
+extern CInputForm *InputForm;

@@ -292,10 +292,10 @@ namespace milligram
 	class CSpiLoader
 	{
 	public:
-		bool ErrorFlag = false;             // エラー時表示フラグ
-		CImageInfo ImageInfo;          // File name
-		CImageInfo SubImageInfo; // Archive 中のFile Name
-		CImageInfo PostImageInfo;  // 読込中の File name
+		bool Initialized = false;             // 初期化完了
+		CImageInfo ImageInfo = {};          // File name
+		CImageInfo SubImageInfo = {}; // Archive 中のFile Name
+		CImageInfo PostImageInfo = {};  // 読込中の File name
 #ifdef _WIN64
 		std::wstring PostFileExt = TEXT(""); // Susie に渡す用の FileExt
 #else
@@ -332,7 +332,6 @@ namespace milligram
 		EWorkFileType LoadingFileType = EWorkFileType_NONE;
 
 		// ポインタデータ
-		ULONG_PTR GdiplusToken;
 		Bitmap *BitmapGDIP = nullptr;
 		Bitmap **GIFBitmapGDIP = nullptr;
 		HBITMAP *GIFhBitmapGDIP = nullptr;
@@ -359,8 +358,8 @@ namespace milligram
 		int MaxAllFrame = 100 * 1000 * 1000; // アニメ全体のデータ量がこれを上回るなら毎フレーム取得する
 
 		// WebP 関係
-		int WebPWidth;
-		int WebPHeight;
+		int WebPWidth = 0;
+		int WebPHeight = 0;
 
 		WebPData WebPBufData = {};
 		uint8_t *pWebPBuf = nullptr;
@@ -368,7 +367,6 @@ namespace milligram
 		HBITMAP *hWebPAnimeBitmap = nullptr;
 		WebPAnimDecoder *WebPDecoder = nullptr;
 		WebPAnimDecoderOptions WebPDecOptions;
-		int PreDelay;
 
 		bool Showing = false; // 表示されているかどうか
 
@@ -376,9 +374,9 @@ namespace milligram
 		int OrgWidth = 200, OrgHeight = 200; // もと画像の大きさ
 		int ORotWidth = 200, ORotHeight = 200; // 転送もと画像のかたち(回転後)
 
-		int BufWidth, BufHeight; // 転送もとのフォームの大きさ（回転前）
-		int SrcRWidth, SrcRHeight;   // 転送もとの大きさ(回転後)
-		int BufMaxWidth, BufMaxHeight; // バックバッファーの画像の大きさ
+		int BufWidth = 0, BufHeight = 0; // 転送もとのフォームの大きさ（回転前）
+		int SrcRWidth = 0, SrcRHeight = 0;   // 転送もとの大きさ(回転後)
+		int BufMaxWidth = 0, BufMaxHeight = 0; // バックバッファーの画像の大きさ
 		EPluginMode Mode = EPluginMode_NONE;
 
 		int MaxBBufferPixel = 4000 * 4000; // バックバッファーの最大ピクセルサイズ 4000 x 4000 は 64M
@@ -386,7 +384,7 @@ namespace milligram
 		FARPROC ProgressCallback = nullptr;
 		HWND hWindow = nullptr;
 		Gdiplus::Color BGColor = Gdiplus::Color(0, 0, 0);
-		CRITICAL_SECTION *CriticalSection;
+		CRITICAL_SECTION *CriticalSection = nullptr;
 
 	public:
 		int ImageNum = 0;

@@ -8,15 +8,6 @@ namespace milligram
 {
 	CSpiLoader::CSpiLoader(void)
 	{
-		Gdiplus::GdiplusStartupInput gdiplusStartupInput; // = {1, NULL, FALSE, FALSE};
-		gdiplusStartupInput.GdiplusVersion = 1;
-		gdiplusStartupInput.DebugEventCallback = NULL;
-		gdiplusStartupInput.SuppressBackgroundThread = FALSE;
-		gdiplusStartupInput.SuppressExternalCodecs = FALSE;
-
-		GdiplusToken = NULL;
-		Gdiplus::GdiplusStartup(&GdiplusToken, &gdiplusStartupInput, NULL);
-
 		InternalLoader = L"*.bmp;*.jpg;*.jpeg;*.png;*.gif;*.webp;";
 	}
 
@@ -28,7 +19,6 @@ namespace milligram
 	{
 		hWindow = hWndNewOwner;
 		ProgressCallback = aProgressCallBack;
-		ErrorFlag = true;
 
 		Spi = std::vector<CSpiPlugin *>();
 
@@ -38,6 +28,7 @@ namespace milligram
 		ShortestPeriod = TimeCaps.wPeriodMin;
 
 		timeBeginPeriod((UINT)ShortestPeriod);
+		Initialized = true;
 	}
 
 	void CSpiLoader::Release(void)
@@ -49,8 +40,6 @@ namespace milligram
 
 		timeEndPeriod((UINT)ShortestPeriod);
 		CheckBackBuffer(0, 0);
-
-		Gdiplus::GdiplusShutdown(GdiplusToken);
 	}
 
 	void CSpiLoader::ClearAllPlugins(void)
@@ -188,8 +177,8 @@ namespace milligram
 				CloseHandle(hMap);
 			}
 			// NOTE:未使用
-			//if(Result == false)
-			//	Result = LoadFromFileEntity(SrcImageInfo, ProgressCallback);
+			if(Result == false)
+				Result = LoadFromFileEntity(SrcImageInfo, ProgressCallback);
 		}
 		CloseHandle(hFile);
 
@@ -494,19 +483,19 @@ namespace milligram
 
 			try
 			{
-				HANDLE HBmpInfo, HBmpData;
+				HANDLE htmpBmpInfo, htmpBmpData;
 
 #ifdef _WIN64
-				if (PostSpi->GetPicture((LPCSTR)SrcImageInfo.FileName.c_str(), 0, 1, &HBmpInfo, &HBmpData, ProgressCallback, 0) != 0) return (false);
+				if (PostSpi->GetPicture((LPCSTR)SrcImageInfo.FileName.c_str(), 0, 1, &htmpBmpInfo, &htmpBmpData, ProgressCallback, 0) != 0) return (false);
 #else
 				std::string file_n = acfc::UnicodeToMultiByte(SrcImageInfo.FileName);
-				if (PostSpi->GetPicture((LPSTR)file_n.c_str(), 0, 0, &HBmpInfo, &HBmpData, ProgressCallback, 0) != 0) return (false);
+				if (PostSpi->GetPicture((LPSTR)file_n.c_str(), 0, 0, &htmpBmpInfo, &htmpBmpData, ProgressCallback, 0) != 0) return (false);
 #endif
 
 				Clear(EPluginMode_PICTURE);
 
-				HANDLE pBmp = GlobalLock(HBmpData); // Win32 API でロック
-				BITMAPINFO *pInfo = (BITMAPINFO*)GlobalLock(HBmpInfo);
+				HANDLE pBmp = GlobalLock(htmpBmpData); // Win32 API でロック
+				BITMAPINFO *pInfo = (BITMAPINFO*)GlobalLock(htmpBmpInfo);
 
 				OrgWidth = pInfo->bmiHeader.biWidth;
 				OrgHeight = pInfo->bmiHeader.biHeight;
@@ -702,14 +691,14 @@ namespace milligram
 
 			try
 			{
-				HANDLE HBmpInfo, HBmpData;
+				HANDLE htmpBmpInfo, htmpBmpData;
 
-				if (PostSpi->GetPicture((LPSTR)FileData, DataSize, 1, &HBmpInfo, &HBmpData, ProgressCallback, 0) != 0) return (false);
+				if (PostSpi->GetPicture((LPSTR)FileData, DataSize, 1, &htmpBmpInfo, &htmpBmpData, ProgressCallback, 0) != 0) return (false);
 
 				Clear(EPluginMode_PICTURE);
 
-				HANDLE pBmp = GlobalLock(HBmpData); // Win32 API でロック
-				BITMAPINFO *pInfo = (BITMAPINFO*)GlobalLock(HBmpInfo);
+				HANDLE pBmp = GlobalLock(htmpBmpData); // Win32 API でロック
+				BITMAPINFO *pInfo = (BITMAPINFO*)GlobalLock(htmpBmpInfo);
 
 				OrgWidth = pInfo->bmiHeader.biWidth;
 				OrgHeight = pInfo->bmiHeader.biHeight;
@@ -855,6 +844,8 @@ namespace milligram
 
 
 		pBmpInfo = new BITMAPINFO();
+		ZeroMemory(&pBmpInfo->bmiHeader, sizeof(BITMAPINFOHEADER));
+		ZeroMemory(&pBmpInfo->bmiColors, sizeof(RGBQUAD));
 		pBmpInfo->bmiHeader.biSize = (DWORD)sizeof(BITMAPINFOHEADER);
 
 		pBmpInfo->bmiHeader.biPlanes = 1;
@@ -900,6 +891,8 @@ namespace milligram
 	{
 		if (pBmpRInfo != nullptr)DeleteRotateBuffer();
 		pBmpRInfo = new BITMAPINFO();
+		ZeroMemory(&pBmpRInfo->bmiHeader, sizeof(BITMAPINFOHEADER));
+		ZeroMemory(&pBmpRInfo->bmiColors, sizeof(RGBQUAD));
 		pBmpRInfo->bmiHeader.biSize = (DWORD)sizeof(BITMAPINFOHEADER);
 
 		pBmpRInfo->bmiHeader.biPlanes = 1;
@@ -1309,29 +1302,28 @@ namespace milligram
 
 			if (FrameSkip == true)
 			{
-				int tmpDelay, DelayDef;
+				int DelayDef;
 				uint8_t *buf;
 				do 
 				{
 					if (WebPAnimDecoderHasMoreFrames(WebPDecoder) == false)
 					{
-						WebPAnimDecoderReset(WebPDecoder);
-						WebPAnimDecoderGetNext(WebPDecoder, &buf, &tmpDelay);
-						PreDelay = 0;
-						DropFrame = DropCount;
-						DropCount = 1;
-						DelayDef = tmpDelay;
 						FrameIndex = 0;
+						DropCount = 1;
+						DropFrame = DropCount;
+						WebPAnimDecoderReset(WebPDecoder);
+						WebPAnimDecoderGetNext(WebPDecoder, &buf, &Delay[0]);
+						DelayDef = Delay[0];
 						LoopIndex++;
 					}
 					else
 					{
-						WebPAnimDecoderGetNext(WebPDecoder, &buf, &tmpDelay);
-						DelayDef = tmpDelay - PreDelay;
-						PreDelay = tmpDelay;
-						DropCount++;
 						FrameIndex++;
+						WebPAnimDecoderGetNext(WebPDecoder, &buf, &Delay[FrameIndex]);
+						DelayDef = Delay[FrameIndex] - Delay[FrameIndex - 1];
+						DropCount++;
 					}
+					if (DelayDef == 0)DelayDef = 100;
 					D = D - DelayDef;
 				}
 				while(D > 0 && (LoopIndex < LoopCount || LoopCount == 0));
@@ -1343,7 +1335,7 @@ namespace milligram
 			else
 			{
 				DropFrame = 0;
-				int tmpDelay;
+				int DelayDef;
 				uint8_t *buf;
 				if (WebPAnimDecoderHasMoreFrames(WebPDecoder) == false)
 				{
@@ -1356,9 +1348,15 @@ namespace milligram
 					FrameIndex++;
 				}
 
-				WebPAnimDecoderGetNext(WebPDecoder, &buf, &tmpDelay);
+				WebPAnimDecoderGetNext(WebPDecoder, &buf, &Delay[FrameIndex]);
 				memcpy(pWebPBuf, buf, 4 * WebPWidth * WebPHeight);
-				DelayTime = D + tmpDelay;
+
+				if (FrameIndex > 0)
+					DelayDef = Delay[FrameIndex] - Delay[FrameIndex - 1];
+				else
+					DelayDef = Delay[0];
+				if (DelayDef == 0)DelayDef = 100;
+				DelayTime = DelayDef;
 				if (DelayTime < 17)DelayTime = 17;
 			}
 
@@ -1385,6 +1383,8 @@ namespace milligram
 		else
 		{
 			BITMAPINFO *pWebPInfo = new BITMAPINFO();
+			ZeroMemory(&pWebPInfo->bmiHeader, sizeof(BITMAPINFOHEADER));
+			ZeroMemory(&pWebPInfo->bmiColors, sizeof(RGBQUAD));
 			pWebPInfo->bmiHeader.biSize = (DWORD)sizeof(BITMAPINFOHEADER);
 
 			pWebPInfo->bmiHeader.biPlanes = 1;
@@ -1438,6 +1438,8 @@ namespace milligram
 		if (AllFrame == true)
 		{
 			BITMAPINFO *pWebPInfo = new BITMAPINFO();
+			ZeroMemory(&pWebPInfo->bmiHeader, sizeof(BITMAPINFOHEADER));
+			ZeroMemory(&pWebPInfo->bmiColors, sizeof(RGBQUAD));
 			pWebPInfo->bmiHeader.biSize = (DWORD)sizeof(BITMAPINFOHEADER);
 
 			pWebPInfo->bmiHeader.biPlanes = 1;
@@ -1466,7 +1468,10 @@ namespace milligram
 			}
 
 			for (i = FrameCount - 1; i > 0; i--)
+			{
 				Delay[i] -= Delay[i - 1];
+				if (Delay[i] == 0)Delay[i] = 100;
+			}
 
 			DelayTime = Delay[0];
 		}
@@ -1480,6 +1485,8 @@ namespace milligram
 			WebPAnimDecoderGetInfo(WebPDecoder, &anim_info);
 
 			BITMAPINFO *pWebPInfo = new BITMAPINFO();
+			ZeroMemory(&pWebPInfo->bmiHeader, sizeof(BITMAPINFOHEADER));
+			ZeroMemory(&pWebPInfo->bmiColors, sizeof(RGBQUAD));
 			pWebPInfo->bmiHeader.biSize = (DWORD)sizeof(BITMAPINFOHEADER);
 
 			pWebPInfo->bmiHeader.biPlanes = 1;
@@ -1488,14 +1495,18 @@ namespace milligram
 			pWebPInfo->bmiHeader.biWidth = WebPWidth;
 			pWebPInfo->bmiHeader.biHeight = -WebPHeight;
 
+			Delay = new int[FrameCount];
+
 			hBitmap = CreateDIBSection(nullptr, pWebPInfo, DIB_RGB_COLORS, (void**)&pWebPBuf, nullptr, 0);
 			delete pWebPInfo;
 
 			uint8_t *buf;
 			WebPAnimDecoderHasMoreFrames(WebPDecoder);
-			WebPAnimDecoderGetNext(WebPDecoder, &buf, &DelayTime);
+			WebPAnimDecoderGetNext(WebPDecoder, &buf, &Delay[0]);
 			memcpy(pWebPBuf, buf, 4 * WebPWidth * WebPHeight);
-			PreDelay = DelayTime;
+
+			if (Delay[0] == 0)Delay[0] = 100;
+			DelayTime = Delay[0];
 		}
 		PreTGT = NowTGT = timeGetTime();
 		Animate = EAnimationType_WEBP;
@@ -1503,6 +1514,7 @@ namespace milligram
 
 	void CSpiLoader::GetWebPExifData(WebPData * webp_data)
 	{
+		//NOTE:未実装
 	}
 		
 	int CSpiLoader::CheckOrientation(void)
@@ -1876,8 +1888,12 @@ namespace milligram
 
 			if (Animate != EAnimationType_NONE)
 			{
-				delete[] Delay;
-				Delay = nullptr;
+				if (Delay != nullptr)
+				{
+					delete[] Delay;
+					Delay = nullptr;
+				}
+
 				if (GIFBitmapGDIP != nullptr)
 				{
 					for (int i = 0; i < FrameCount; i++)
@@ -2046,6 +2062,8 @@ namespace milligram
 		BITMAPINFO *pbi = new BITMAPINFO();
 		BYTE *pB;
 		HBITMAP hbd;
+		ZeroMemory(&pbi->bmiHeader, sizeof(BITMAPINFOHEADER));
+		ZeroMemory(&pbi->bmiColors, sizeof(RGBQUAD));
 		pbi->bmiHeader.biSize = (DWORD)sizeof(BITMAPINFOHEADER);
 
 		pbi->bmiHeader.biPlanes = 1;
