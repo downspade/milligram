@@ -1891,11 +1891,25 @@ namespace acfc
 		SetFocus(handle);
 	}
 
-	void CBaseWindow::SetPosition(int ax, int ay, int aWidth, int aHeight)
+	void CBaseWindow::SetPositionAndSize(int ax, int ay, int aWidth, int aHeight)
 	{
-		SetWindowPos(handle, nullptr, ax, ay, aWidth, aHeight, 0);
+		SetWindowPos(handle, nullptr, ax, ay, aWidth, aHeight, SWP_NOZORDER);
 		x = ax;
 		y = ay;
+		Width = aWidth;
+		Height = aHeight;
+	}
+
+	void CBaseWindow::SetWindowPosition(int ax, int ay)
+	{
+		SetWindowPos(handle, nullptr, ax, ay, 0, 0, SWP_NOZORDER | SWP_NOMOVE);
+		x = ax;
+		y = ay;
+	}
+
+	void CBaseWindow::SetWindowSize(int aWidth, int aHeight)
+	{
+		SetWindowPos(handle, nullptr, 0, 0, aWidth, aHeight, SWP_NOZORDER | SWP_NOSIZE);
 		Width = aWidth;
 		Height = aHeight;
 	}

@@ -646,7 +646,7 @@ void CMainForm::CloseFromMessage(void)
 void CMainForm::CreateDisplayBox(HWND hwnd, LPCREATESTRUCT lp)
 {
 	DisplayBox.Init(hwnd, lp, (LONG_PTR)ListBoxProcedure, true);
-	DisplayBox.SetPosition(0, 0, Width, Height);
+	DisplayBox.SetPositionAndSize(0, 0, Width, Height);
 }
 
 // トレイアイコンを登録する
@@ -2302,7 +2302,7 @@ void CMainForm::OnPaint(bool FullRefresh)
 	}
 
 	//WWidth > MWidth || WHeight > MHeight || 
-	if (WLeft < Desktop.GetLeft() || WTop < Desktop.GetTop() || WLeft + WWidth >= Desktop.GetRight() || WTop + WHeight >= Desktop.GetBottom())
+	if (FullScreen|| WLeft < Desktop.GetLeft() || WTop < Desktop.GetTop() || WLeft + WWidth >= Desktop.GetRight() || WTop + WHeight >= Desktop.GetBottom())
 	{
 		FullRefresh = true;
 	}
@@ -2359,28 +2359,43 @@ void CMainForm::OnPaint(bool FullRefresh)
 		Dest.Offset(offset);
 
 		if (FullRefresh == true)hDC = GetDC(hWindow);
-		int OldStretchMode = SetStretchBltMode(hDC, STRETCH_HALFTONE);
+		int OldStretchMode;
+		
+		if (Susie->AnimePlaying == true && MinColorONColorArea > (double)Width * Height)
+		{
+			double p = (double)(Susie->FrameIndex + 1) / Susie->FrameCount;
+			double d = (double)(Susie->DropCount) / Susie->FrameCount;
+			double a = (double)(Susie->DropFrame) / Susie->FrameCount;
+
+			if ((p < 0.7 && d >= 0.2) || a > 0.3)
+			{
+				MinColorONColorArea = (double)Width * Height;
+			}
+		}
+
+		if ((Holding & EEventButton_LEFT) || (Susie->AnimePlaying && (double)Width * Height >= MinColorONColorArea))
+		{
+			OldStretchMode = SetStretchBltMode(hDC, COLORONCOLOR);
+		}
+		else
+		{
+			OldStretchMode = SetStretchBltMode(hDC, STRETCH_HALFTONE);
+		}
+
 		POINT p = {};
 		SetBrushOrgEx(hDC, 0, 0, &p);
 
-//		HDC sDC = CreateCompatibleDC(hDC);
-//		HANDLE sDC_hBitmap = SelectObject(sDC, Susie->hBmpData);
+		HDC sDC = CreateCompatibleDC(hDC);
+		HANDLE sDC_hBitmap = SelectObject(sDC, Susie->hBmpData);
 
-/*		BOOL result = StretchBlt(hDC,
+		BOOL result = StretchBlt(hDC,
 			Dest.X, Dest.Y, Dest.Width, Dest.Height,
 			sDC,
-			Src.X, Susie->SrcRHeight - Src.GetBottom(), Src.Width, Src.Height,
-			SRCCOPY);*/
+			Src.X, Src.Y, Src.Width, Src.Height,
+			SRCCOPY);
 
-
-		int result = StretchDIBits(hDC,
-			Dest.X, Dest.Y, Dest.Width, Dest.Height,
-			Src.X, Susie->SrcRHeight - Src.GetBottom(), Src.Width, Src.Height,
-			Susie->pBmpData, Susie->pBmpInfo,
-			DIB_RGB_COLORS, SRCCOPY);
-
-//		SelectObject(sDC, sDC_hBitmap);
-//		DeleteDC(sDC);
+		SelectObject(sDC, sDC_hBitmap);
+		DeleteDC(sDC);
 
 		SetStretchBltMode(hDC, OldStretchMode);
 		if (FullRefresh == true)ReleaseDC(hWindow, hDC);
@@ -2967,7 +2982,7 @@ bool CMainForm::SyncWindow(void)
 	}
 
 	SetWindowPos(hWindow, nullptr, Left, Top, Width, Height, (SWP_NOZORDER | SWP_NOOWNERZORDER));
-	DisplayBox.SetPosition(0, 0, Width, Height);
+	DisplayBox.SetPositionAndSize(0, 0, Width, Height);
 
 	Right = Left + Width;
 	Bottom = Top + Height;
@@ -3364,6 +3379,8 @@ void CMainForm::OnMouseUp(CMainForm::EEventButton button)
 void CMainForm::DoMouseUp(void)
 {
 	SetCenter(WLeft + WWidth / 2, WTop + WHeight / 2);
+
+	if (Holding & EEventButton_LEFT)FormRefresh();
 
 	Holding = EEventButton_NONE;
 	PositionType = EMousePositionType_NORMAL;
@@ -3916,8 +3933,9 @@ void CMainForm::CreateFileMoveMenuFolder(std::wstring FolderName)
 
 	if (acfc::GetParentFolder(FolderName) != TEXT(""))
 	{
+		std::wstring pf = acfc::GetParentFolder(FolderName) + TEXT("[..](&0)");
 		MoveData.push_back(TEXT("??"));
-		menuItem.dwTypeData = StringBuffer((TCHAR *)TEXT("[..](&0)"));
+		menuItem.dwTypeData = StringBuffer((TCHAR *)pf.c_str());
 		menuItem.wID = wID;
 		InsertMenuItem(hMoveMenu, Index, TRUE, &menuItem);
 		wID++;
@@ -3952,7 +3970,7 @@ void CMainForm::CreateFileMoveMenuFolder(std::wstring FolderName)
 			std::wstring sc = TEXT("0");
 			sc[0] = (TEXT('0') + i + sBase);
 
-			if (sc[0] > TEXT('9')) sc[0] = (sc[0] - TEXT('9') + TEXT('A'));
+			if (sc[0] > TEXT('9')) sc[0] = (sc[0] - TEXT('9') + TEXT('A') - 1);
 			if (sc[0] > TEXT('Y')) sc[0] = 0;
 
 			if (sc[0] != 0)
@@ -3961,9 +3979,9 @@ void CMainForm::CreateFileMoveMenuFolder(std::wstring FolderName)
 			}
 
 			if (FolderName == acfc::GetFolderName(temp[i]))
-				sc = TEXT("\\") + acfc::GetFileName(temp[i]);
+				sc = TEXT(".\\") + acfc::GetFileName(temp[i]) + sc;
 			else
-				sc = temp[i];
+				sc = temp[i] + sc;
 
 			MoveData.push_back(temp[i]);
 			menuItem.dwTypeData = StringBuffer((TCHAR *)sc.c_str());
@@ -4022,57 +4040,46 @@ void CMainForm::CreateFileMoveMenuFolder(std::wstring FolderName)
 	SetMenuItemInfo(hParentMoveMenu, ID_MOVE_MOVEPARENT, FALSE, &mii); // これで初めて有効になる
 }
 
-// ダイアログボックスを表示して現在表示中のファイルが存在するフォルダに新しいフォルダを作る
-void CMainForm::CreateFolder(void)
+// ダイアログボックスを表示して現在表示中のファイルが存在するフォルダに新しいフォルダを作ってそこにファイルを移動する
+std::wstring CMainForm::CreateFolder(void)
 {
-	NoStayOnTop();
-	std::wstring NewFileName = TEXT("");
-
-	InputForm->SetData(LoadStringResource(IDS_MES_1040), LoadStringResource(IDS_MES_1041), NewFileName);
+	std::wstring NewFolderName = TEXT("");
+	InputForm->SetData(LoadStringResource(IDS_MES_1040), LoadStringResource(IDS_MES_1041), NewFolderName);
 	if (InputForm->ShowDialog(appInstance, hWindow) == IDOK)
 	{
-		NewFileName = InputForm->Result;
+		NewFolderName = InputForm->Result;
 
 		int i;
-		i = acfc::CheckFileIrregularChar(NewFileName);
+		i = acfc::CheckFileIrregularChar(NewFolderName);
 		if (i < 0)
 		{
-			NewFileName = acfc::GetFolderName(OpeningFileName) + TEXT("\\") + NewFileName;
+			NewFolderName = acfc::GetFolderName(OpeningFileName) + TEXT("\\") + NewFolderName;
 
-			if (acfc::FolderExists(NewFileName) == true)
+			if (acfc::FolderExists(NewFolderName) == true)
 			{
 				MessageBox(hWindow, LoadStringResource(IDS_MES_1042).c_str(), TEXT("Failed"), MB_OK | MB_ICONASTERISK);
 			}
 			else
 			{
-				CreateDirectory(NewFileName.c_str(), 0);
+				CreateDirectory(NewFolderName.c_str(), 0);
 			}
 		}
 		else
 		{
-			std::wstring Mes = NewFileName + LoadStringResource(IDS_MES_1022) + NewFileName[i] + LoadStringResource(IDS_MES_1023);
+			std::wstring Mes = NewFolderName + LoadStringResource(IDS_MES_1022) + NewFolderName[i] + LoadStringResource(IDS_MES_1023);
 			MessageBox(hWindow, Mes.c_str(), TEXT("Failed"), MB_OK | MB_ICONASTERISK);
-			return;
 		}
 	}
-	RestoreStayOnTop();
+	return(NewFolderName);
 }
 
-
-void CMainForm::SetRotateValueFromSusie(void)
-{
-	RotateValue = Susie->Rotate;
-	(*DisplayList)[ShowIndex].Rotate = RotateValue;
-}
 
 void CMainForm::AbsoluteRotate(int Value)
 {
 	if (Susie->Showing == true && Initialized == true)
 	{
 		Susie->AbsoluteRotate(Value);
-		SetRotateValueFromSusie();
-		SetRotateImageSize();
-		if (CorrectWindow())SyncWindow();
+		RotateImage();
 		FormRefresh();
 	}
 
@@ -4081,24 +4088,28 @@ void CMainForm::AbsoluteRotate(int Value)
 
 void CMainForm::OffsetRotate(int Value)
 {
-	if (Susie->Showing == false) return;
-
-	Susie->OffsetRotate(Value);
-	SetRotateValueFromSusie();
-
-	CheckRotateCheck();
-	SetRotateImageSize();
-	if (CorrectWindow())SyncWindow();
-	(*DisplayList)[ShowIndex].Rotate = RotateValue;
-	FormRefresh();
+	if (Susie->Showing == true)
+	{
+		Susie->OffsetRotate(Value);
+		RotateImage();
+		FormRefresh();
+		CheckRotateCheck();
+	}
 }
 
 
-void CMainForm::SetRotateImageSize(void)
+void CMainForm::RotateImage(void)
 {
+	RotateValue = Susie->Rotate;
+	(*DisplayList)[ShowIndex].Rotate = RotateValue;
+
 	FixSizeRatio = true;
 	SetNewImageSize();
 	FixSizeRatio = false;
+
+	MinColorONColorArea = DBL_MAX;
+	if (CorrectWindow())SyncWindow();
+	(*DisplayList)[ShowIndex].Rotate = RotateValue;
 }
 
 // 画像をパーセンテージ指定でズームする
@@ -5759,6 +5770,7 @@ CMainForm::EShowAbsoluteImageResult CMainForm::ShowAbsoluteImage(int Index, int 
 			CheckRotateCheck();
 			SSTimer.Enabled(SlideShow);
 			SetImageFileName();
+			MinColorONColorArea = DBL_MAX;
 			FileLoading--;
 			FormRefresh();
 			return (EShowAbsoluteImageResult_PASSED);
@@ -5769,6 +5781,7 @@ CMainForm::EShowAbsoluteImageResult CMainForm::ShowAbsoluteImage(int Index, int 
 				SetNewImageSize();
 			}
 			SSTimer.Enabled(SlideShow);
+			MinColorONColorArea = DBL_MAX;
 			FileLoading--;
 			FormRefresh();
 			return (EShowAbsoluteImageResult_OPENARCHIVE);
@@ -6863,8 +6876,15 @@ void CMainForm::MnFileMove_Click(int Index)
 	if (MoveFolder == TEXT("*"))
 	{
 		NoStayOnTop();
-		CreateFolder();
+		Folder = CreateFolder();
 		RestoreStayOnTop();
+		if (Folder != TEXT("") && acfc::FolderExists(Folder) == true)
+		{
+			Dest = Folder + TEXT("\\") + acfc::GetFileName(MoveSrc);
+			MoveFile(MoveSrc.c_str(), Dest.c_str());
+			ChangeHistoryName(MoveSrc, Dest);
+			ChangeImageFileName(Dest);
+		}
 	}
 	else 
 	{

@@ -315,7 +315,9 @@ namespace acfc
 		void Show(void);
 		void Hide(void);
 		void Focus(void);
-		void SetPosition(int ax, int ay, int aWidth, int aHeight);
+		void SetPositionAndSize(int ax, int ay, int aWidth, int aHeight);
+		void SetWindowSize(int aWidth, int aHeight);
+		void SetWindowPosition(int ax, int ay);
 		bool SetHWND(HWND hWnd);
 		void GetWindowStatus(void);
 		int x = 0, y = 0;

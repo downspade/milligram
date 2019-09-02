@@ -250,6 +250,7 @@ private:
 	double MaximumDiagonalLength = 10000 * 10000 * 2;
 	double MaxSizeRatio = 200;
 	bool KeepPreviousPosition = false;           // カーソル位置から開始しない
+	double MinColorONColorArea = DBL_MAX; // COLONCOLOR で転送する最小の面積
 	//-----------------------------------------------------------------------------
 
 	//-----------------------------------------------------------------------------
@@ -538,7 +539,7 @@ public:
 	void PopupFileMovePopup(POINT &p);
 	void CreateFileMovePPMenu(void);
 	void CreateFileMoveMenuFolder(std::wstring FolderName);
-	void CreateFolder(void);
+	std::wstring CreateFolder(void);
 
 
 	// アルファのメニューのチェックのオンオフをコントロールする
@@ -548,10 +549,9 @@ public:
 
 	// 画像を回転する
 
-	void SetRotateValueFromSusie(void);
 	void AbsoluteRotate(int Value);
 	void OffsetRotate(int Value);
-	void SetRotateImageSize(void);
+	void RotateImage(void);
 
 
 	// 画像をズームする

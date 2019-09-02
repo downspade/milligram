@@ -852,7 +852,7 @@ namespace milligram
 		pBmpInfo->bmiHeader.biBitCount = 32;
 		pBmpInfo->bmiHeader.biCompression = BI_RGB;
 		pBmpInfo->bmiHeader.biWidth = cWidth;
-		pBmpInfo->bmiHeader.biHeight = cHeight;
+		pBmpInfo->bmiHeader.biHeight = -cHeight;
 
 		hBmpData = CreateDIBSection(nullptr, pBmpInfo, DIB_RGB_COLORS, (void **)&pBmpData, nullptr, 0);
 
@@ -899,7 +899,7 @@ namespace milligram
 		pBmpRInfo->bmiHeader.biBitCount = 32;
 		pBmpRInfo->bmiHeader.biCompression = BI_RGB;
 		pBmpRInfo->bmiHeader.biWidth = OrgWidth;
-		pBmpRInfo->bmiHeader.biHeight = OrgHeight;
+		pBmpRInfo->bmiHeader.biHeight = -OrgHeight;
 
 		hBmpRData = CreateDIBSection(nullptr, pBmpRInfo, DIB_RGB_COLORS, (void **)&pBmpRData, nullptr, 0);
 		return(true);
@@ -934,24 +934,14 @@ namespace milligram
 			switch (Rotate)
 			{
 			case 0:
-				points[0].x = 0; points[0].y = BufMaxHeight - BufHeight;
-				points[1].x = BufWidth; points[1].y = BufMaxHeight - BufHeight;
-				points[2].x = 0; points[2].y = BufMaxHeight;
-				break;
-			case 1:
-				points[0].x = BufHeight; points[0].y = BufMaxHeight - BufWidth;
-				points[1].x = BufHeight; points[1].y = BufMaxHeight;
-				points[2].x = 0; points[2].y = BufMaxHeight - BufWidth;
+				points[0].x = 0; points[0].y = 0;
+				points[1].x = BufWidth; points[1].y = 0;
+				points[2].x = 0; points[2].y = BufHeight;
 				break;
 			case 2:
-				points[0].x = BufWidth - 1; points[0].y = BufMaxHeight - 1;
-				points[1].x = 0 - 1; points[1].y = BufMaxHeight - 1;
-				points[2].x = BufWidth - 1; points[2].y = BufMaxHeight - BufHeight - 1;
-				break;
-			case 3:
-				points[0].x = 0; points[0].y = BufMaxHeight;
-				points[1].x = 0; points[1].y = BufMaxHeight - BufWidth;
-				points[2].x = BufHeight; points[2].y = BufMaxHeight;
+				points[0].x = BufWidth - 1; points[0].y = BufHeight - 1;
+				points[1].x = 0 - 1; points[1].y = BufHeight - 1;
+				points[2].x = BufWidth - 1; points[2].y = -1;
 				break;
 			}
 
@@ -1026,25 +1016,15 @@ namespace milligram
 			// “]‘—æ‚ð€”õ‚·‚é
 			switch (Rotate)
 			{
-			case 0:
-				points[0].x = 0; points[0].y = BufMaxHeight - BufHeight;
-				points[1].x = BufWidth; points[1].y = BufMaxHeight - BufHeight;
-				points[2].x = 0; points[2].y = BufMaxHeight;
-				break;
 			case 1:
-				points[0].x = BufHeight; points[0].y = BufMaxHeight - BufWidth;
-				points[1].x = BufHeight; points[1].y = BufMaxHeight;
-				points[2].x = 0; points[2].y = BufMaxHeight - BufWidth;
-				break;
-			case 2:
-				points[0].x = BufWidth - 1; points[0].y = BufMaxHeight - 1;
-				points[1].x = 0 - 1; points[1].y = BufMaxHeight - 1;
-				points[2].x = BufWidth - 1; points[2].y = BufMaxHeight - BufHeight - 1;
+				points[0].x = BufHeight; points[0].y = 0;
+				points[1].x = BufHeight; points[1].y = BufWidth;
+				points[2].x = 0; points[2].y = 0;
 				break;
 			case 3:
-				points[0].x = 0; points[0].y = BufMaxHeight;
-				points[1].x = 0; points[1].y = BufMaxHeight - BufWidth;
-				points[2].x = BufHeight; points[2].y = BufMaxHeight;
+				points[0].x = 0; points[0].y = BufWidth;
+				points[1].x = 0; points[1].y = 0;
+				points[2].x = BufHeight; points[2].y = BufWidth;
 				break;
 			}
 
@@ -1308,9 +1288,9 @@ namespace milligram
 				{
 					if (WebPAnimDecoderHasMoreFrames(WebPDecoder) == false)
 					{
+						DropFrame = DropCount;
 						FrameIndex = 0;
 						DropCount = 1;
-						DropFrame = DropCount;
 						WebPAnimDecoderReset(WebPDecoder);
 						WebPAnimDecoderGetNext(WebPDecoder, &buf, &Delay[0]);
 						DelayDef = Delay[0];
@@ -2070,7 +2050,7 @@ namespace milligram
 		pbi->bmiHeader.biBitCount = 32;
 		pbi->bmiHeader.biCompression = BI_RGB;
 		pbi->bmiHeader.biWidth = newWidth;
-		pbi->bmiHeader.biHeight = newHeight;
+		pbi->bmiHeader.biHeight = -newHeight;
 
 		hbd = CreateDIBSection(nullptr, pbi, DIB_RGB_COLORS, (void **)&pB, nullptr, 0);
 
