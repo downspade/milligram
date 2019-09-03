@@ -12,6 +12,7 @@
 #define CULTURESTR "en-US"
 #define MIN_LOOP 50
 #define MIN_WAIT 10
+#define DEFAULT_MAXHISTORYNUM 16
 
 using namespace milligram;
 
@@ -247,10 +248,10 @@ private:
 	bool FixDiagonalLength = false;              // 一定倍率で表示
 	int KeepDiagonalLength = 0;         // 一定表示時の対角線の２乗
 	double MinimalDiagonalLength = 50 * 50 * 2; // 最小の表示対角線の２乗
-	double MaximumDiagonalLength = 10000 * 10000 * 2;
+//	double MaxLength = 40000;
 	double MaxSizeRatio = 200;
 	bool KeepPreviousPosition = false;           // カーソル位置から開始しない
-	double MinColorONColorArea = DBL_MAX; // COLONCOLOR で転送する最小の面積
+	double MinColorONColorArea = DBL_MAX; // 高速伝送モード (COLONCOLOR) で転送する最小の面積
 	//-----------------------------------------------------------------------------
 
 	//-----------------------------------------------------------------------------
@@ -318,7 +319,7 @@ private:
 	int ThreadCount = 0;
 
 	std::vector<std::wstring> HistoryList;
-	int MaxHistoryNum = 16;
+	int MaxHistoryNum = DEFAULT_MAXHISTORYNUM;
 	int RefreshHistoryMode = 1;
 
 	time_t IniFileTime;
@@ -432,7 +433,7 @@ public:
 	bool AddHistoryList_(std::wstring &FileName);
 	bool AddHistoryList(std::wstring &FileName);
 	bool AddHistoryList(std::vector<std::wstring> &FileNames);
-	bool ConvertHistoryMenu(void);
+	bool CreateHistoryMenu(void);
 	bool ChangeHistoryName(std::wstring Src, std::wstring Dest);
 
 	
@@ -477,13 +478,18 @@ public:
 	void PauseAnimeThread(void);
 	void RestartAnimeThread(void);
 
+	void ResetTransMode(void); // 高速伝送モードの設定を初期化する
+	void CalclurateMaxSizeRatio(void);
+
 	std::wstring GetFileVersionString(void); // ファイルのバージョン文字列を取得する
 
 	// 描画関係
 
-	void OnPaint(bool FullRefresh); // 描画イベント
+	void DoPaint(bool FullRefresh); // 描画イベント
+	void DoFillBGColor(void);
 	bool GetTransRect(Gdiplus::Rect &wRect, Gdiplus::Rect &Src, Gdiplus::Rect &Dest); // 転送矩形を得る
 	void DrawSSIcon(void); // スライドショーアイコンを描画する
+	void ClearSSIcon(void); // スライドショーアイコンを消去する
 	void BeginUpdate(void); // 描画を開始する（再入回避）
 	void EndUpdate(void); // 描画を終了する
 	void FormRefresh(void); // フォームを再描画する

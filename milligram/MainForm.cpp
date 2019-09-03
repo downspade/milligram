@@ -263,7 +263,7 @@ bool CMainForm::Initialize(HINSTANCE hInstance, int nCmdShow, LPWSTR lpCmdLine)
 
 
 	// ファイルヒストリの処理
-	ConvertHistoryMenu();
+	CreateHistoryMenu();
 
 	int OLeft = WLeft, OTop = WTop;
 
@@ -312,8 +312,8 @@ bool CMainForm::Initialize(HINSTANCE hInstance, int nCmdShow, LPWSTR lpCmdLine)
 	}
 	else
 	{
-	ShowIndex = -1;
-	ShowArchive = -1;
+		ShowIndex = -1;
+		ShowArchive = -1;
 	}
 
 	if (ShowIndex < 0)
@@ -357,8 +357,13 @@ bool CMainForm::Initialize(HINSTANCE hInstance, int nCmdShow, LPWSTR lpCmdLine)
 	// ウィンドウをここで表示
 	ShowWindow(hWindow, nCmdShow);
 	Visible = true;
+	
+	DoPaint(true);
 	UpdateWindow(hWindow);
+
 	acfc::SetAbsoluteForegroundWindow(hWindow, AlwaysTop);
+
+	FormRefresh();
 
 	DragAcceptFiles(hWindow, true);
 
@@ -1002,6 +1007,9 @@ bool CMainForm::SaveIni(std::wstring IniName)
 
 	sb.append(TEXT("LastMovedFolder=") + LastMovedFolder + TEXT("\n"));
 
+	if (MaxHistoryNum != DEFAULT_MAXHISTORYNUM)
+		sb.append(TEXT("MaxHistoryNum=") + std::to_wstring(MaxHistoryNum) + TEXT("\n"));
+
 	for (i = 0; i < (int)HistoryList.size(); i++)
 		sb.append(TEXT("History") + std::to_wstring(i) + TEXT("=") + HistoryList[i] + TEXT("\n"));
 
@@ -1229,13 +1237,15 @@ bool CMainForm::AddHistoryList_(std::wstring &FileName)
 
 bool CMainForm::AddHistoryList(std::wstring &FileName)
 {
+	if (MaxHistoryNum == 0)return(false);
 	AddHistoryList_(FileName);
-	ConvertHistoryMenu();
+	CreateHistoryMenu();
 	return (true);
 }
 
 bool CMainForm::AddHistoryList(std::vector<std::wstring> &FileNames)
 {
+	if (MaxHistoryNum == 0)return(false);
 	size_t i = 0;
 	if (MaxHistoryNum < (int)FileNames.size())
 	{
@@ -1248,13 +1258,13 @@ bool CMainForm::AddHistoryList(std::vector<std::wstring> &FileNames)
 		i++;
 	}
 
-	ConvertHistoryMenu();
+	CreateHistoryMenu();
 	return (true);
 }
 
 
 // ヒストリーをメニューに変換する
-bool CMainForm::ConvertHistoryMenu(void)
+bool CMainForm::CreateHistoryMenu(void)
 {
 	int i;
 	if (HistoryList.size() > 0)
@@ -1273,7 +1283,7 @@ bool CMainForm::ConvertHistoryMenu(void)
 
 		for (i = 0; i < (int)HistoryList.size(); i++)
 		{
-			menuItem.dwTypeData = StringBuffer((TCHAR *)HistoryList[i].c_str());
+			menuItem.dwTypeData = StringBuffer((TCHAR *)acfc::GetMiniPathName(HistoryList[i], 1).c_str());
 			menuItem.wID = wID;
 			InsertMenuItem(hHistoryMenu, Index, TRUE, &menuItem);
 			wID++;
@@ -1779,8 +1789,7 @@ LRESULT CMainForm::ProcessMessages(HWND hWnd, UINT message, WPARAM wParam, LPARA
 			break;
 
 		case WM_PAINT:
-			OnPaint(false);
-			CallDefault = ShowingList;
+			CallDefault = true;
 			break;
 
 		case WM_ERASEBKGND:
@@ -2294,7 +2303,7 @@ bool CMainForm::ProcessAppCommand(LPARAM cmd, LPARAM uDevicem, LPARAM dwKeys)
 }
 
 // 再描画
-void CMainForm::OnPaint(bool FullRefresh)
+void CMainForm::DoPaint(bool FullRefresh)
 {
 	if (EnableDraw > 0 || ShowingList == true)
 	{
@@ -2302,7 +2311,7 @@ void CMainForm::OnPaint(bool FullRefresh)
 	}
 
 	//WWidth > MWidth || WHeight > MHeight || 
-	if (FullScreen|| WLeft < Desktop.GetLeft() || WTop < Desktop.GetTop() || WLeft + WWidth >= Desktop.GetRight() || WTop + WHeight >= Desktop.GetBottom())
+	if (FullScreen || WLeft < Desktop.GetLeft() || WTop < Desktop.GetTop() || WLeft + WWidth >= Desktop.GetRight() || WTop + WHeight >= Desktop.GetBottom())
 	{
 		FullRefresh = true;
 	}
@@ -2570,6 +2579,21 @@ void CMainForm::OnPaint(bool FullRefresh)
 	LeaveCriticalSection(&CriticalSection);
 }
 
+// 背景色で塗りつぶす
+void CMainForm::DoFillBGColor(void)
+{
+	Gdiplus::Rect Dest = { RLeft, RTop, RWidth, RHeight };
+
+	Gdiplus::Graphics g(hWindow);
+
+	SolidBrush brush(FullFillColor);
+
+	Pen pen(DrawColor);
+	g.FillRectangle(&brush, Dest);
+
+	InvalidateRect(hWindow, NULL, TRUE);
+}
+
 
 // 転送矩形を得る
 bool CMainForm::GetTransRect(Gdiplus::Rect &wRect, Gdiplus::Rect &Src, Gdiplus::Rect &Dest)
@@ -2702,6 +2726,11 @@ void CMainForm::DrawSSIcon(void)
 	DeleteObject(&bgBrush);
 }
 
+void CMainForm::ClearSSIcon(void)
+{
+	FormRefresh();
+}
+
 
 // 描画を開始する（再入回避）
 void CMainForm::BeginUpdate(void)
@@ -2718,7 +2747,11 @@ void CMainForm::EndUpdate(void)
 // フォームを再描画する
 void CMainForm::FormRefresh(void)
 {
-	if (EnableDraw == 0)InvalidateRect(hWindow, nullptr, FALSE);
+	if (EnableDraw == 0)
+	{
+		DoPaint(true);
+		InvalidateRect(hWindow, nullptr, FALSE);
+	}
 }
 
 
@@ -2983,6 +3016,8 @@ bool CMainForm::SyncWindow(void)
 
 	SetWindowPos(hWindow, nullptr, Left, Top, Width, Height, (SWP_NOZORDER | SWP_NOOWNERZORDER));
 	DisplayBox.SetPositionAndSize(0, 0, Width, Height);
+
+	DoPaint(false);
 
 	Right = Left + Width;
 	Bottom = Top + Height;
@@ -3380,9 +3415,14 @@ void CMainForm::DoMouseUp(void)
 {
 	SetCenter(WLeft + WWidth / 2, WTop + WHeight / 2);
 
-	if (Holding & EEventButton_LEFT)FormRefresh();
+	if (Holding & EEventButton_LEFT)
+	{
+		Holding = EEventButton_NONE;
+		FormRefresh();
+	}
+	else
+		Holding = EEventButton_NONE;
 
-	Holding = EEventButton_NONE;
 	PositionType = EMousePositionType_NORMAL;
 
 	POINT ScCurPos;
@@ -3752,6 +3792,7 @@ void CMainForm::PauseAnimeThread(void)
 			if (AnimeTimerPaused == true || Susie->AnimePlaying == false)break;
 			Sleep(MIN_WAIT);
 		}
+		ResetTransMode();
 	}
 }
 
@@ -3768,9 +3809,34 @@ void CMainForm::RestartAnimeThread(void)
 			if (AnimeTimerPaused == false || Susie->AnimePlaying == false)break;
 			Sleep(MIN_WAIT);
 		}
+		ResetTransMode();
 	}
 
 }
+
+void CMainForm::ResetTransMode(void)
+{
+	MinColorONColorArea = DBL_MAX;
+}
+
+void CMainForm::CalclurateMaxSizeRatio(void)
+{
+	MaxSizeRatio = 200.0;
+	//double wr, hr;
+
+	//if (Susie->Showing == false)
+	//{
+	//	MaxSizeRatio = 100.0;
+	//	return;
+	//}
+	//wr = MaxLength / (double)Susie->OrgWidth;
+	//hr = MaxLength / (double)Susie->OrgHeight;
+	//if (wr < hr)
+	//	MaxSizeRatio = wr;
+	//else
+	//	MaxSizeRatio = hr;
+}
+
 
 //--- メニュー編集 ---------------------------------------------------------------
 
@@ -3933,7 +3999,7 @@ void CMainForm::CreateFileMoveMenuFolder(std::wstring FolderName)
 
 	if (acfc::GetParentFolder(FolderName) != TEXT(""))
 	{
-		std::wstring pf = acfc::GetParentFolder(FolderName) + TEXT("[..](&0)");
+		std::wstring pf = acfc::GetMiniPathName(acfc::GetParentFolder(FolderName), 1) + TEXT("[..](&0)");
 		MoveData.push_back(TEXT("??"));
 		menuItem.dwTypeData = StringBuffer((TCHAR *)pf.c_str());
 		menuItem.wID = wID;
@@ -3949,7 +4015,7 @@ void CMainForm::CreateFileMoveMenuFolder(std::wstring FolderName)
 	if (LastMovedFolder != TEXT("") && acfc::FolderExists(LastMovedFolder))
 	{
 		MoveData.push_back(LastMovedFolder);
-		std::wstring tmp = LastMovedFolder + TEXT("(&1)");// acfc::GetMiniPathName(LastMovedFolder, 1) + TEXT("(&1)");
+		std::wstring tmp = acfc::GetMiniPathName(LastMovedFolder, 1) + TEXT("(&1)");
 		menuItem.dwTypeData = StringBuffer((TCHAR *)tmp.c_str());
 		menuItem.wID = wID;
 		InsertMenuItem(hMoveMenu, Index, TRUE, &menuItem);
@@ -4001,7 +4067,7 @@ void CMainForm::CreateFileMoveMenuFolder(std::wstring FolderName)
 	if (ThisFolder != TEXT(""))
 	{
 		MoveData.push_back(TEXT("?"));
-		std::wstring tmp = ThisFolder + LoadStringResource(IDS_MES_1036);
+		std::wstring tmp = acfc::GetMiniPathName(ThisFolder, 0) + LoadStringResource(IDS_MES_1036);
 		menuItem.dwTypeData = StringBuffer((TCHAR *)tmp.c_str());
 		menuItem.wID = wID;
 		InsertMenuItem(hMoveMenu, Index, TRUE, &menuItem);
@@ -4080,7 +4146,6 @@ void CMainForm::AbsoluteRotate(int Value)
 	{
 		Susie->AbsoluteRotate(Value);
 		RotateImage();
-		FormRefresh();
 	}
 
 	CheckRotateCheck();
@@ -4092,7 +4157,6 @@ void CMainForm::OffsetRotate(int Value)
 	{
 		Susie->OffsetRotate(Value);
 		RotateImage();
-		FormRefresh();
 		CheckRotateCheck();
 	}
 }
@@ -4107,7 +4171,10 @@ void CMainForm::RotateImage(void)
 	SetNewImageSize();
 	FixSizeRatio = false;
 
-	MinColorONColorArea = DBL_MAX;
+	if (WWidth == WHeight)
+		FormRefresh();
+
+	ResetTransMode();
 	if (CorrectWindow())SyncWindow();
 	(*DisplayList)[ShowIndex].Rotate = RotateValue;
 }
@@ -4330,12 +4397,6 @@ bool CMainForm::CheckDiagonalLength(double &dWidth, double &dHeight)
 	{
 		Resize = true;
 		TargetDiagonalLength = MinimalDiagonalLength;
-	}
-	else if (MaximumDiagonalLength < ((dWidth * dWidth) + dHeight * dHeight) || dWidth < 0 || dHeight < 0)
-	{
-		// NOTE:対角線最大サイズは未実装
-		//                Resize = true;
-		//                TargetDiagonalLength = MaximumDiagonalLength;
 	}
 
 	if (Resize)
@@ -4689,10 +4750,19 @@ bool CMainForm::GoToFullScreen(bool aMode)
 		Width = WWidth + FrameWidth * 2;
 		Height = WHeight + FrameWidth * 2;
 	}
+
+	DoFillBGColor();
+
 	if (FitMode != EFitMode_NONE)
+	{
 		SetNewImageSize();
+	}
 	else
+	{
 		SyncWindow();
+	}
+
+	if(aMode)FormRefresh();
 
 	return (true);
 }
@@ -5770,7 +5840,9 @@ CMainForm::EShowAbsoluteImageResult CMainForm::ShowAbsoluteImage(int Index, int 
 			CheckRotateCheck();
 			SSTimer.Enabled(SlideShow);
 			SetImageFileName();
-			MinColorONColorArea = DBL_MAX;
+			ResetTransMode();
+			CalclurateMaxSizeRatio();
+			DoPaint(false);
 			FileLoading--;
 			FormRefresh();
 			return (EShowAbsoluteImageResult_PASSED);
@@ -5781,7 +5853,9 @@ CMainForm::EShowAbsoluteImageResult CMainForm::ShowAbsoluteImage(int Index, int 
 				SetNewImageSize();
 			}
 			SSTimer.Enabled(SlideShow);
-			MinColorONColorArea = DBL_MAX;
+			ResetTransMode();
+			CalclurateMaxSizeRatio();
+			DoPaint(false);
 			FileLoading--;
 			FormRefresh();
 			return (EShowAbsoluteImageResult_OPENARCHIVE);
@@ -5909,7 +5983,7 @@ void CMainForm::AnimeThread(void)
 				AnimeRefresh = true;
 				LeaveCriticalSection(&CriticalSection);
 
-				OnPaint(true);
+				DoPaint(true);
 			}
 				
 			{
@@ -5928,6 +6002,9 @@ void CMainForm::AnimeThread(void)
 	EnterCriticalSection(&CriticalSection);
 	AnimeRefresh = false;
 	LeaveCriticalSection(&CriticalSection);
+
+	ResetTransMode();
+	DoPaint(true);
 }
 
 void CMainForm::SusieClear(EPluginMode Mode)
@@ -5993,6 +6070,7 @@ void CMainForm::MnToggleVisible_Click(void)
 		if (Visible == false)
 		{
 			ShowWindow(hWindow, SW_SHOW);
+			FormRefresh();
 			Visible = true;
 		}
 		else
@@ -6006,6 +6084,7 @@ void CMainForm::MnToggleVisible_Click(void)
 		if (Visible == false)
 		{
 			ShowWindow(hWindow, SW_SHOWNORMAL);
+			FormRefresh();
 			Visible = true;
 		}
 		else
@@ -6920,6 +6999,11 @@ void CMainForm::MnFileMove_Click(int Index)
 					RestoreStayOnTop();
 
 					if (Result == IDNO)return;
+					if (DeleteFile(Dest.c_str()) == FALSE)
+					{
+						MessageBox(hWindow, LoadStringResource(IDS_MES_1058).c_str(), TEXT("Failed"), MB_OK | MB_ICONASTERISK);
+						return;
+					}
 				}
 			}
 
@@ -7217,7 +7301,8 @@ void CMainForm::CursorTimer_Tick(void)
 		else
 		{
 			SSIcon = -1;
-			InvalidateRect(hWindow, nullptr, FALSE);
+			ClearSSIcon();
+//			InvalidateRect(hWindow, nullptr, FALSE);
 		}
 	}
 }

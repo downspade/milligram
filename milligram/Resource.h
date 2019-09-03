@@ -84,6 +84,8 @@
 #define IDS_MES_1055                    11055
 #define IDS_MES_1056                    11056
 #define IDS_MES_1057                    11057
+#define IDS_MES_1058                    11058
+#define IDS_MES_1059                    11059
 #define IDS_RES_1901                    11901
 #define IDS_RES_1902                    11902
 #define IDS_RES_1903                    11903
@@ -155,6 +157,8 @@
 #define IDS_MES_2055                    12055
 #define IDS_MES_2056                    12056
 #define IDS_MES_2057                    12057
+#define IDS_MES_2058                    12058
+#define IDS_MES_2059                    12059
 #define IDS_RES_2901                    12901
 #define IDS_RES_2902                    12902
 #define IDS_RES_2903                    12903
