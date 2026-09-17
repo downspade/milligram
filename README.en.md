@@ -1,4 +1,4 @@
-# milligram image viewer
+# milligram image viewer ver.3.4.2
 
 A multimedia viewer with no UI. **A Windows image viewer that displays only your images and videos on the desktop.**
 
@@ -117,6 +117,7 @@ Automatically advance to the next image or video at a set interval. Continuous p
 | `Z` | Play / pause |
 | `←` / `→` | Skip back / forward 10 seconds |
 | `Ctrl` + `+` / `-` | Volume up / down |
+
 | `M` | Toggle mute |
 
 For the full list of operations and shortcuts, see the [manual](./documents/manual.en.md).
