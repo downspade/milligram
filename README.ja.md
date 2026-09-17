@@ -1,4 +1,4 @@
-# milligram image viewer
+# milligram image viewer ver.3.4.2
 
 UI のないマルチメディアビューワ。**画像や動画だけをデスクトップに表示できます** Windows用の画像ビューワです。
 
